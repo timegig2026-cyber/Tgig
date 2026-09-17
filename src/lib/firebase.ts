@@ -1,12 +1,11 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, User, updateProfile } from 'firebase/auth';
 import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, query, where, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
-export const googleProvider = new GoogleAuthProvider();
 
 export enum OperationType {
   CREATE = 'create',
@@ -44,9 +43,11 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 }
 
 export { 
-  signInWithPopup, 
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
   signOut, 
   onAuthStateChanged, 
+  updateProfile,
   doc, 
   getDoc, 
   setDoc, 
