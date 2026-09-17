@@ -1,0 +1,6 @@
+{
+  "name": "GiGs",
+  "description": "A map-based application showing South Africa and user location.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

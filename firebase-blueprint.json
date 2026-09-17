@@ -1,0 +1,58 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "Public profile information for users and seekers.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "The unique ID of the user." },
+        "displayName": { "type": "string", "maxLength": 100, "description": "The display name of the user." },
+        "bio": { "type": "string", "maxLength": 500, "description": "A short bio about the user." },
+        "role": { "type": "string", "enum": ["seeker", "provider"], "description": "User's primary role." },
+        "location": {
+          "type": "object",
+          "properties": {
+            "lat": { "type": "number" },
+            "lng": { "type": "number" }
+          }
+        },
+        "lastSeen": { "type": "string", "format": "date-time", "description": "Last time user was online." },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "displayName", "role"]
+    },
+    "Gig": {
+      "title": "Gig",
+      "description": "A job opportunity or service offered.",
+      "type": "object",
+      "properties": {
+        "gigId": { "type": "string" },
+        "title": { "type": "string", "maxLength": 200 },
+        "description": { "type": "string", "maxLength": 1000 },
+        "providerId": { "type": "string" },
+        "location": {
+          "type": "object",
+          "properties": {
+            "lat": { "type": "number" },
+            "lng": { "type": "number" },
+            "address": { "type": "string" }
+          }
+        },
+        "price": { "type": "number" },
+        "status": { "type": "string", "enum": ["open", "closed", "in-progress"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["gigId", "title", "providerId", "location"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profiles and seeker data."
+    },
+    "/gigs/{gigId}": {
+      "schema": "Gig",
+      "description": "Available gigs on the map."
+    }
+  }
+}

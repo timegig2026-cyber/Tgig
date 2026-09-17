@@ -1,0 +1,63 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Master Catch-all Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- User Profiles ---
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['userId', 'displayName', 'role']) &&
+             data.userId == request.auth.uid &&
+             data.displayName is string && data.displayName.size() <= 100 &&
+             data.role in ['seeker', 'provider'] &&
+             (data.get('bio', '') is string && data.get('bio', '').size() <= 500);
+    }
+
+    match /users/{userId} {
+      allow get: if isSignedIn() || (resource != null && resource.data.role == 'seeker');
+      allow list: if resource.data.role == 'seeker';
+      allow create: if isOwner(userId) && isValidUserProfile(incoming());
+      allow update: if isOwner(userId) && isValidUserProfile(incoming()) && 
+                    incoming().userId == existing().userId;
+    }
+
+    // --- Gigs ---
+    function isValidGig(data) {
+      return data.keys().hasAll(['gigId', 'title', 'providerId', 'location']) &&
+             data.gigId is string &&
+             data.title is string && data.title.size() <= 200 &&
+             data.providerId == request.auth.uid &&
+             data.location.lat is number && data.location.lng is number;
+    }
+
+    match /gigs/{gigId} {
+      allow read: if true;
+      allow create: if isSignedIn() && isValidGig(incoming());
+      allow update: if isSignedIn() && existing().providerId == request.auth.uid && isValidGig(incoming());
+      allow delete: if isSignedIn() && existing().providerId == request.auth.uid;
+    }
+  }
+}
