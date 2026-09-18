@@ -22,7 +22,9 @@ export default function ProfileEdit({ onClose }: ProfileEditProps) {
   const [phone, setPhone] = useState(profile?.phone || '');
   const [bio, setBio] = useState(profile?.bio || '');
   const [socialLinks, setSocialLinks] = useState<string[]>(profile?.socialLinks || ['']);
-  const [location, setLocation] = useState<{ lat: number, lng: number }>(profile?.location || { lat: -30.5595, lng: 22.9375 });
+  const [location, setLocation] = useState<{ lat: number, lng: number }>(
+    profile?.location ? { lat: Number(profile.location.lat || profile.location.latitude || -30.5595), lng: Number(profile.location.lng || profile.location.longitude || 22.9375) } : { lat: -30.5595, lng: 22.9375 }
+  );
   const [isTenantRequest, setIsTenantRequest] = useState(profile?.isTenantRequest || false);
   const [idDocument, setIdDocument] = useState<string>(profile?.idDocument || '');
   const [idDocName, setIdDocName] = useState<string>('');
@@ -33,7 +35,7 @@ export default function ProfileEdit({ onClose }: ProfileEditProps) {
     // Automatically pinpoint location if it's the default and geolocation is available
     if (navigator.geolocation && (!profile?.location)) {
       navigator.geolocation.getCurrentPosition((pos) => {
-        setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        setLocation({ lat: Number(pos.coords.latitude), lng: Number(pos.coords.longitude) });
       });
     }
   }, [profile?.location]);
@@ -75,6 +77,11 @@ export default function ProfileEdit({ onClose }: ProfileEditProps) {
 
     try {
       const profileRef = doc(db, 'users', user.uid);
+      const plainLocation = {
+        lat: Number(location?.lat || -30.5595),
+        lng: Number(location?.lng || 22.9375)
+      };
+
       await updateDoc(profileRef, {
         firstName,
         middleName,
@@ -83,7 +90,7 @@ export default function ProfileEdit({ onClose }: ProfileEditProps) {
         phone,
         bio,
         socialLinks: socialLinks.filter(l => l.trim() !== ''),
-        location,
+        location: plainLocation,
         idDocument,
         isTenantRequest,
         updatedAt: new Date().toISOString()
@@ -105,7 +112,7 @@ export default function ProfileEdit({ onClose }: ProfileEditProps) {
   function MapEvents() {
     useMapEvents({
       click(e) {
-        setLocation(e.latlng);
+        setLocation({ lat: Number(e.latlng.lat), lng: Number(e.latlng.lng) });
       },
     });
     return null;
