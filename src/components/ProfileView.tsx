@@ -58,7 +58,8 @@ export default function ProfileView() {
         await signInWithEmailAndPassword(auth, email, password);
       }
     } catch (err: any) {
-      setError(err.message || 'Authentication failed');
+      const fullErrorDetails = `Auth Error Code: ${err.code || 'UNKNOWN'}\nMessage: ${err.message || String(err)}`;
+      setError(fullErrorDetails);
     }
   };
 
@@ -191,7 +192,7 @@ export default function ProfileView() {
 
         <form onSubmit={handleAuth} className="space-y-4">
           {error && (
-            <div className="p-3 bg-red-50 text-red-600 text-xs font-bold rounded-xl border border-red-100 uppercase tracking-wider">
+            <div className="p-4 bg-red-50 text-red-700 text-xs font-mono font-bold rounded-2xl border-2 border-red-200 whitespace-pre-wrap leading-relaxed shadow-sm">
               {error}
             </div>
           )}
