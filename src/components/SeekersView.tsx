@@ -44,8 +44,9 @@ export default function SeekersView({ onSelectSeeker }: SeekersViewProps) {
   }, []);
 
   const filteredSeekers = seekers.filter(s => 
-    s.displayName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (s.bio && s.bio.toLowerCase().includes(searchQuery.toLowerCase()))
+    s.photoURL && s.photoURL.trim() !== '' &&
+    (s.displayName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (s.bio && s.bio.toLowerCase().includes(searchQuery.toLowerCase())))
   );
 
   return (

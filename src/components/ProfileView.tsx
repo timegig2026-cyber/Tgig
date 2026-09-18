@@ -284,6 +284,18 @@ export default function ProfileView() {
 
   return (
     <div className="flex-1 p-6 space-y-8 overflow-y-auto pb-20">
+      {(!profile?.photoURL || profile.photoURL.trim() === '') && (
+        <div className="bg-amber-50 border-2 border-amber-200 rounded-3xl p-5 flex items-center space-x-4 shadow-sm animate-pulse">
+          <div className="w-10 h-10 bg-amber-500 text-white rounded-2xl flex items-center justify-center font-black flex-shrink-0">
+            !
+          </div>
+          <div className="space-y-0.5">
+            <h4 className="text-xs font-black text-amber-900 uppercase tracking-widest">Profile Inactive</h4>
+            <p className="text-[11px] text-amber-700 font-medium">Please upload your face picture using the camera button below to activate your profile and appear in search results.</p>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-4">
           <div className="relative group">
