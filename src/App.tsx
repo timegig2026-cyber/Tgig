@@ -1,17 +1,90 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Map as MapIcon, User as UserIcon, Search } from 'lucide-react';
+import { Map as MapIcon, User as UserIcon, Search, CreditCard } from 'lucide-react';
 import GiGsMap from './components/GiGsMap';
 import ProfileView from './components/ProfileView';
 import SeekersView from './components/SeekersView';
 import SeekerProfileView from './components/SeekerProfileView';
 import { AuthProvider } from './components/AuthProvider';
 
+import { db, doc, onSnapshot } from './lib/firebase';
+import { useAuth } from './components/AuthProvider';
+
 type ViewType = 'gigs' | 'seekers' | 'profile';
 
 function MainApp() {
+  const { user } = useAuth();
   const [currentView, setCurrentView] = useState<ViewType>('gigs');
   const [viewingSeekerId, setViewingSeekerId] = useState<string | null>(null);
+  const [branding, setBranding] = useState<any>(null);
+  const [showSplash, setShowSplash] = useState(true);
+  const [isSubscribed, setIsSubscribed] = useState(true);
+
+  useEffect(() => {
+    if (!user) {
+      setShowSplash(false);
+      setIsSubscribed(true);
+      return;
+    }
+
+    // Load branding if user is a tenant
+    const unsub = onSnapshot(doc(db, 'users', user.uid), (doc) => {
+      if (doc.exists()) {
+        const data = doc.data();
+        if (data.isTenantApproved) {
+          // Check subscription status
+          const active = data.subscriptionActive === true;
+          setIsSubscribed(active);
+
+          if (active && data.branding) {
+            setBranding(data.branding);
+          } else {
+            setBranding(null); // Clear branding if inactive
+          }
+        } else {
+          setIsSubscribed(true); // Not a tenant, no block
+          setBranding(null);
+        }
+      }
+      // Hide splash after 5 seconds
+      const timer = setTimeout(() => setShowSplash(false), 5000);
+      return () => clearTimeout(timer);
+    });
+
+    return () => unsub();
+  }, [user]);
+
+  if (showSplash && branding) {
+    return (
+      <motion.div 
+        initial={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 z-[5000] bg-white flex flex-col items-center justify-center p-12 text-center"
+      >
+        <motion.div
+          initial={{ scale: 0.9, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ duration: 0.5, ease: "easeOut" }}
+          className="space-y-8"
+        >
+          <h1 
+            style={{ 
+              fontFamily: branding.fontFamily,
+              fontSize: branding.fontSize,
+              color: branding.fontColor
+            }}
+            className="font-black leading-tight"
+          >
+            {branding.appName || 'TimeGig'}
+          </h1>
+          <div className="w-12 h-1 bg-gray-900 mx-auto rounded-full animate-pulse" />
+          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+            Welcome to {branding.appName || 'TimeGig'}
+          </p>
+        </motion.div>
+      </motion.div>
+    );
+  }
 
   const renderView = () => {
     switch (currentView) {

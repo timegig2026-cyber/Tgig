@@ -1,7 +1,8 @@
 import { useAuth } from './AuthProvider';
 import { auth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, updateProfile, db, doc, updateDoc, handleFirestoreError, OperationType } from '../lib/firebase';
-import { User as UserIcon, LogOut, LogIn, Share2, Check, Mail, Lock, UserPlus, Camera, Loader2, Edit3, MapPin, ShieldCheck, TrendingUp } from 'lucide-react';
+import { User as UserIcon, LogOut, LogIn, Share2, Check, Mail, Lock, UserPlus, Camera, Loader2, Edit3, MapPin, ShieldCheck, TrendingUp, CreditCard } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
+import { motion } from 'motion/react';
 import ProfileEdit from './ProfileEdit';
 import { MapContainer, TileLayer, Marker } from 'react-leaflet';
 import L from 'leaflet';
@@ -35,6 +36,7 @@ export default function ProfileView() {
   const [uploading, setUploading] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [showTenantPortal, setShowTenantPortal] = useState(false);
+  const [tenantPortalTab, setTenantPortalTab] = useState<'overview' | 'pop' | 'branding' | 'subscription'>('overview');
   const [showAdminPortal, setShowAdminPortal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -165,7 +167,7 @@ export default function ProfileView() {
 
   if (loading) return <div className="p-8 text-center">Loading...</div>;
 
-  if (showTenantPortal) return <TenantPortalView onClose={() => setShowTenantPortal(false)} />;
+  if (showTenantPortal) return <TenantPortalView onClose={() => setShowTenantPortal(false)} initialTab={tenantPortalTab} />;
   if (showAdminPortal) return <AdminView onClose={() => setShowAdminPortal(false)} />;
 
   if (isEditing) return <ProfileEdit onClose={() => setIsEditing(false)} />;
@@ -417,9 +419,35 @@ export default function ProfileView() {
                 : 'Earn passive income by hosting services. Enable this in your profile settings and resubmit for approval.'}
             </p>
 
+            {profile?.isTenantApproved && !profile?.subscriptionActive && (
+              <motion.div 
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className="bg-red-50 border-2 border-red-100 p-4 rounded-2xl space-y-3"
+              >
+                <div className="flex items-center space-x-2 text-red-600">
+                  <CreditCard className="w-4 h-4" />
+                  <span className="text-[10px] font-black uppercase tracking-widest">Subscription Expired</span>
+                </div>
+                <p className="text-[9px] font-bold text-red-400 uppercase tracking-widest leading-relaxed">
+                  Tenant features & branding are locked. Standard Seekers/Gigs features remain active. Renew to restore your portal and earnings.
+                </p>
+                <button
+                  onClick={() => {
+                    setTenantPortalTab('subscription');
+                    setShowTenantPortal(true);
+                  }}
+                  className="w-full bg-red-600 text-white py-3 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-red-200"
+                >
+                  Pay Subscription Fee
+                </button>
+              </motion.div>
+            )}
+
             <button
               onClick={() => {
                 if (profile?.isTenantApproved) {
+                  setTenantPortalTab('overview');
                   setShowTenantPortal(true);
                 }
               }}
@@ -437,7 +465,9 @@ export default function ProfileView() {
             {profile?.isTenantApproved && (
               <div className="bg-white p-3 rounded-xl border border-blue-100 flex items-center justify-between">
                 <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Tenant Earnings</span>
-                <span className="text-xs font-black text-gray-900">R 0.00</span>
+                <span className="text-xs font-black text-gray-900">
+                  {profile?.subscriptionActive ? 'R 0.00' : 'Earnings Disabled'}
+                </span>
               </div>
             )}
           </div>

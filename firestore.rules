@@ -53,7 +53,9 @@ service cloud.firestore {
              (data.get('isTenantRequest', false) is bool) &&
              (data.get('isTenantApproved', false) is bool) &&
              (data.get('isAdmin', false) is bool) &&
-             (data.get('subscriptionActive', false) is bool);
+             (data.get('subscriptionActive', false) is bool) &&
+             (data.get('subscriptionExpiresAt', '') is string) &&
+             (data.get('branding', {}) is map);
     }
 
     match /users/{userId} {
@@ -61,10 +63,8 @@ service cloud.firestore {
       allow list: if isSignedIn() && (resource.data.get('role', 'seeker') == 'seeker' || isAdmin());
       allow create: if isOwner(userId) && isValidUserProfile(incoming()) && incoming().userId == userId;
       allow update: if isOwner(userId) && isValidUserProfile(incoming()) && incoming().userId == userId;
-      allow update: if isAdmin() && (
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isTenantApproved', 'isTenantRequest', 'updatedAt']) ||
-        isValidUserProfile(incoming())
-      );
+      allow update: if isAdmin() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isTenantApproved', 'isTenantRequest', 'subscriptionActive', 'updatedAt']);
     }
 
     // --- Gigs ---
@@ -127,6 +127,26 @@ service cloud.firestore {
                     (incoming().status in ['pending', 'approved', 'rejected']) &&
                     incoming().paymentId == existing().paymentId &&
                     incoming().userId == existing().userId &&
+                    incoming().tenantId == existing().tenantId &&
+                    (incoming().get('createdAt', '') == existing().get('createdAt', ''));
+    }
+
+    // --- Tenant Subscriptions ---
+    function isValidTenantSub(data) {
+      return data.keys().hasAll(['subId', 'tenantId', 'proofImage', 'status', 'createdAt']) &&
+             data.subId is string &&
+             data.tenantId == request.auth.uid &&
+             data.status == 'pending' &&
+             data.createdAt is string &&
+             (data.get('updatedAt', '') is string);
+    }
+
+    match /tenantSubscriptions/{subId} {
+      allow read: if isSignedIn() && (resource.data.tenantId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && isValidTenantSub(incoming()) && isValidId(subId);
+      allow update: if isSignedIn() && isAdmin() &&
+                    (incoming().status in ['pending', 'approved', 'rejected']) &&
+                    incoming().subId == existing().subId &&
                     incoming().tenantId == existing().tenantId &&
                     (incoming().get('createdAt', '') == existing().get('createdAt', ''));
     }

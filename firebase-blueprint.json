@@ -30,6 +30,16 @@
         "isTenantApproved": { "type": "boolean", "description": "Whether the user's tenant request is approved." },
         "isAdmin": { "type": "boolean", "description": "Whether the user is an administrator." },
         "subscriptionActive": { "type": "boolean", "description": "Whether the tenant subscription is active." },
+        "subscriptionExpiresAt": { "type": "string", "format": "date-time", "description": "When the tenant subscription expires." },
+        "branding": {
+          "type": "object",
+          "properties": {
+            "appName": { "type": "string" },
+            "fontFamily": { "type": "string" },
+            "fontSize": { "type": "string" },
+            "fontColor": { "type": "string" }
+          }
+        },
         "lastSeen": { "type": "string", "format": "date-time", "description": "Last time user was online." },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
@@ -106,6 +116,22 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["paymentId", "userId", "tenantId", "proofImage", "status", "createdAt"]
+    },
+    "TenantSubscription": {
+      "title": "Tenant Subscription",
+      "description": "Proof of payment for tenant's own monthly subscription.",
+      "type": "object",
+      "properties": {
+        "subId": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "tenantName": { "type": "string" },
+        "proofImage": { "type": "string" },
+        "amount": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["subId", "tenantId", "proofImage", "status", "createdAt"]
     }
   },
   "firestore": {
@@ -124,6 +150,10 @@
     "/payments/{paymentId}": {
       "schema": "Payment",
       "description": "Proof of payment records for tenants."
+    },
+    "/tenantSubscriptions/{subId}": {
+      "schema": "TenantSubscription",
+      "description": "Tenant subscription payment records."
     }
   }
 }

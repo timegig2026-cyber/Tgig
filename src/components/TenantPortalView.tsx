@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { db, collection, query, onSnapshot, updateDoc, doc, where } from '../lib/firebase';
-import { Users, ShieldCheck, DollarSign, ArrowLeft, Check, X, FileText, Loader2, TrendingUp, Search } from 'lucide-react';
+import { Users, ShieldCheck, DollarSign, ArrowLeft, Check, X, FileText, Loader2, TrendingUp, Search, Palette, Eye, CreditCard, Upload, Lock } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from './AuthProvider';
 
@@ -18,17 +18,45 @@ interface Payment {
 
 interface TenantPortalViewProps {
   onClose: () => void;
+  initialTab?: 'overview' | 'pop' | 'branding' | 'subscription';
 }
 
-export default function TenantPortalView({ onClose }: TenantPortalViewProps) {
+export default function TenantPortalView({ onClose, initialTab = 'overview' }: TenantPortalViewProps) {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'overview' | 'pop'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'pop' | 'branding' | 'subscription'>(initialTab);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
+  const [profile, setProfile] = useState<any>(null);
+  const [showPreview, setShowPreview] = useState(false);
+  const [savingBranding, setSavingBranding] = useState(false);
+  const [uploadingPop, setUploadingPop] = useState(false);
+  const [showSubSuccess, setShowSubSuccess] = useState(false);
+  const [lastError, setLastError] = useState<string | null>(null);
+
+  // Branding state
+  const [branding, setBranding] = useState({
+    appName: '',
+    fontFamily: 'Inter',
+    fontSize: '24px',
+    fontColor: '#000000'
+  });
 
   useEffect(() => {
     if (!user) return;
+    
+    // Fetch profile for branding
+    const userRef = doc(db, 'users', user.uid);
+    const unsubProfile = onSnapshot(userRef, (doc) => {
+      if (doc.exists()) {
+        const data = doc.data();
+        setProfile(data);
+        if (data.branding) {
+          setBranding(data.branding);
+        }
+      }
+    });
+
     const q = query(collection(db, 'payments'), where('tenantId', '==', user.uid));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const paymentsList = snapshot.docs.map(doc => ({
@@ -38,8 +66,97 @@ export default function TenantPortalView({ onClose }: TenantPortalViewProps) {
       setPayments(paymentsList);
       setLoading(false);
     });
-    return unsubscribe;
+    return () => {
+      unsubProfile();
+      unsubscribe();
+    };
   }, [user]);
+
+  const handleSubPayment = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user || !profile) return;
+
+    setUploadingPop(true);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = async () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        const maxDim = 800;
+        if (width > height && width > maxDim) {
+          height = (height * maxDim) / width;
+          width = maxDim;
+        } else if (height > maxDim) {
+          width = (width * maxDim) / height;
+          height = maxDim;
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+        
+        const base64String = canvas.toDataURL('image/jpeg', 0.7);
+
+        try {
+          const subId = `sub_${Date.now()}`;
+          const { setDoc } = await import('../lib/firebase');
+          
+          await setDoc(doc(db, 'tenantSubscriptions', subId), {
+            subId,
+            tenantId: user.uid,
+            tenantName: profile.displayName,
+            proofImage: base64String,
+            amount: 299.99,
+            status: 'pending',
+            createdAt: new Date().toISOString()
+          });
+          
+          setShowSubSuccess(true);
+          setTimeout(() => setShowSubSuccess(false), 8000);
+        } catch (error: any) {
+          console.error("Error submitting sub payment", error);
+          setLastError(`Subscription Submission Failed: ${error.message} (Code: ${error.code}) - File: ${file.name} (${file.size} bytes)`);
+          alert("Submission Failed. Please try again.");
+        } finally {
+          setUploadingPop(false);
+        }
+      };
+      img.onerror = () => {
+        setLastError(`Failed to process image file: ${file.name}`);
+        setUploadingPop(false);
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.onerror = () => {
+      setLastError(`Failed to read file: ${file.name}`);
+      setUploadingPop(false);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSaveBranding = async () => {
+    if (!user) return;
+    setSavingBranding(true);
+    try {
+      await updateDoc(doc(db, 'users', user.uid), {
+        branding,
+        updatedAt: new Date().toISOString()
+      });
+      startPreview();
+    } catch (error: any) {
+      console.error("Error saving branding", error);
+      setLastError(`Branding Save Failed: ${error.message} (Code: ${error.code})`);
+    } finally {
+      setSavingBranding(false);
+    }
+  };
+
+  const startPreview = () => {
+    setShowPreview(true);
+    setTimeout(() => setShowPreview(false), 5000);
+  };
 
   const handleApprovePayment = async (paymentId: string) => {
     try {
@@ -48,8 +165,9 @@ export default function TenantPortalView({ onClose }: TenantPortalViewProps) {
         updatedAt: new Date().toISOString()
       });
       setSelectedPayment(null);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error approving payment", error);
+      setLastError(`Payment Approval Failed: ${error.message} (Code: ${error.code})`);
     }
   };
 
@@ -60,8 +178,9 @@ export default function TenantPortalView({ onClose }: TenantPortalViewProps) {
         updatedAt: new Date().toISOString()
       });
       setSelectedPayment(null);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error rejecting payment", error);
+      setLastError(`Payment Rejection Failed: ${error.message} (Code: ${error.code})`);
     }
   };
 
@@ -84,21 +203,47 @@ export default function TenantPortalView({ onClose }: TenantPortalViewProps) {
         
         <div className="flex items-center space-x-1 bg-white/5 p-1 rounded-xl">
           <button 
-            onClick={() => setActiveTab('overview')}
-            className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'overview' ? 'bg-white text-blue-900 shadow-sm' : 'text-blue-300 hover:text-white'}`}
+            onClick={() => {
+              if (profile?.subscriptionActive) setActiveTab('overview');
+              else setActiveTab('subscription');
+            }}
+            className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'overview' ? 'bg-white text-blue-900 shadow-sm' : 'text-blue-300 hover:text-white'} ${!profile?.subscriptionActive && activeTab !== 'overview' ? 'opacity-50' : ''}`}
           >
+            {!profile?.subscriptionActive && <Lock className="w-3 h-3 mr-1" />}
             <TrendingUp className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Overview</span>
           </button>
           <button 
-            onClick={() => setActiveTab('pop')}
-            className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'pop' ? 'bg-white text-blue-900 shadow-sm' : 'text-blue-300 hover:text-white'}`}
+            onClick={() => {
+              if (profile?.subscriptionActive) setActiveTab('pop');
+              else setActiveTab('subscription');
+            }}
+            className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'pop' ? 'bg-white text-blue-900 shadow-sm' : 'text-blue-300 hover:text-white'} ${!profile?.subscriptionActive && activeTab !== 'pop' ? 'opacity-50' : ''}`}
           >
+            {!profile?.subscriptionActive && <Lock className="w-3 h-3 mr-1" />}
             <DollarSign className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">PoP</span>
             {pendingPayments.length > 0 && (
               <span className="bg-red-500 text-white w-4 h-4 flex items-center justify-center rounded-full text-[8px] font-bold">{pendingPayments.length}</span>
             )}
+          </button>
+          <button 
+            onClick={() => {
+              if (profile?.subscriptionActive) setActiveTab('branding');
+              else setActiveTab('subscription');
+            }}
+            className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'branding' ? 'bg-white text-blue-900 shadow-sm' : 'text-blue-300 hover:text-white'} ${!profile?.subscriptionActive && activeTab !== 'branding' ? 'opacity-50' : ''}`}
+          >
+            {!profile?.subscriptionActive && <Lock className="w-3 h-3 mr-1" />}
+            <Palette className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Branding</span>
+          </button>
+          <button 
+            onClick={() => setActiveTab('subscription')}
+            className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'subscription' ? 'bg-white text-blue-900 shadow-sm' : 'text-blue-300 hover:text-white'}`}
+          >
+            <CreditCard className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Sub Fee</span>
           </button>
         </div>
       </div>
@@ -106,6 +251,27 @@ export default function TenantPortalView({ onClose }: TenantPortalViewProps) {
       {/* Content Area */}
       <div className="flex-1 overflow-y-auto bg-gray-50">
         <div className="max-w-4xl mx-auto p-6">
+          {lastError && (
+            <div className="mb-6 bg-red-50 border-2 border-red-100 rounded-3xl p-6 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2 text-red-600">
+                  <X className="w-4 h-4" />
+                  <span className="text-[10px] font-black uppercase tracking-widest">System Error Detected</span>
+                </div>
+                <button 
+                  onClick={() => setLastError(null)}
+                  className="text-[8px] font-black text-red-400 uppercase tracking-widest hover:text-red-600"
+                >
+                  Clear Logs
+                </button>
+              </div>
+              <div className="bg-white/50 p-4 rounded-xl border border-red-50">
+                <p className="text-[10px] font-mono font-bold text-red-600 break-all leading-relaxed">
+                  {lastError}
+                </p>
+              </div>
+            </div>
+          )}
           <AnimatePresence mode="wait">
             {activeTab === 'overview' && (
               <motion.div 
@@ -233,9 +399,259 @@ export default function TenantPortalView({ onClose }: TenantPortalViewProps) {
                 )}
               </motion.div>
             )}
+            {activeTab === 'branding' && (
+              <motion.div 
+                key="branding"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="space-y-6"
+              >
+                <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 space-y-8">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-black text-gray-900 uppercase tracking-widest">White-Label Branding</h3>
+                      <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Customize your application's appearance</p>
+                    </div>
+                    <button 
+                      onClick={startPreview}
+                      className="flex items-center space-x-2 bg-blue-50 text-blue-600 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-100 transition-all"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>Preview (5s)</span>
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">App Name</label>
+                      <input 
+                        type="text"
+                        value={branding.appName}
+                        onChange={(e) => setBranding({...branding, appName: e.target.value})}
+                        placeholder="e.g. My Gigs App"
+                        className="w-full bg-gray-50 border-none rounded-xl py-4 px-4 text-sm font-bold text-gray-900 focus:ring-2 focus:ring-blue-100"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Font Family</label>
+                      <select 
+                        value={branding.fontFamily}
+                        onChange={(e) => setBranding({...branding, fontFamily: e.target.value})}
+                        className="w-full bg-gray-50 border-none rounded-xl py-4 px-4 text-sm font-bold text-gray-900 focus:ring-2 focus:ring-blue-100 appearance-none"
+                      >
+                        <option value="Inter">Inter (Sans)</option>
+                        <option value="Playfair Display">Playfair Display (Serif)</option>
+                        <option value="Space Grotesk">Space Grotesk (Modern)</option>
+                        <option value="JetBrains Mono">JetBrains Mono (Monospace)</option>
+                        <option value="Plus Jakarta Sans">Plus Jakarta Sans</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Font Size</label>
+                      <div className="flex items-center space-x-4">
+                        <input 
+                          type="range"
+                          min="16"
+                          max="72"
+                          value={parseInt(branding.fontSize)}
+                          onChange={(e) => setBranding({...branding, fontSize: `${e.target.value}px`})}
+                          className="flex-1 accent-blue-600"
+                        />
+                        <span className="text-xs font-black text-gray-900 w-12 text-center">{branding.fontSize}</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Branding Color</label>
+                      <div className="flex items-center space-x-4">
+                        <input 
+                          type="color"
+                          value={branding.fontColor}
+                          onChange={(e) => setBranding({...branding, fontColor: e.target.value})}
+                          className="w-12 h-12 rounded-xl cursor-pointer border-none bg-transparent"
+                        />
+                        <input 
+                          type="text"
+                          value={branding.fontColor}
+                          onChange={(e) => setBranding({...branding, fontColor: e.target.value})}
+                          className="flex-1 bg-gray-50 border-none rounded-xl py-4 px-4 text-sm font-bold text-gray-900 focus:ring-2 focus:ring-blue-100"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <button 
+                    onClick={handleSaveBranding}
+                    disabled={savingBranding}
+                    className="w-full bg-blue-600 text-white py-5 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-blue-200 hover:bg-blue-700 transition-all disabled:opacity-50 flex items-center justify-center space-x-2"
+                  >
+                    {savingBranding ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <>
+                        <Check className="w-4 h-4" />
+                        <span>Save Changes</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </motion.div>
+            )}
+            {activeTab === 'subscription' && (
+              <motion.div 
+                key="subscription"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="space-y-6"
+              >
+                <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 space-y-8">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                      <h3 className="text-sm font-black text-gray-900 uppercase tracking-widest">Monthly Subscription</h3>
+                      <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Keep your application active for 30 days</p>
+                    </div>
+                    <div className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest ${profile?.subscriptionActive ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'}`}>
+                      {profile?.subscriptionActive ? 'Status: Active' : 'Status: Payment Required'}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+                    {/* Realistic Bank Card */}
+                    <div className="relative w-full aspect-[1.6/1] bg-gradient-to-br from-teal-500 to-blue-700 rounded-3xl p-8 text-white shadow-2xl overflow-hidden group">
+                      <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -mr-32 -mt-32 blur-3xl" />
+                      <div className="relative h-full flex flex-col justify-between">
+                        <div className="flex justify-between items-start">
+                          <div className="space-y-1">
+                            <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-80">Capitec Bank</p>
+                            <div className="w-10 h-8 bg-yellow-400/90 rounded-lg shadow-inner flex items-center justify-center">
+                              <div className="w-6 h-0.5 bg-black/10 my-1" />
+                            </div>
+                          </div>
+                          <div className="text-right">
+                             <p className="text-sm font-black uppercase italic">VISA</p>
+                          </div>
+                        </div>
+
+                        <div className="space-y-4">
+                          <p className="text-2xl font-mono tracking-[0.15em] font-bold">1334 0673 66</p>
+                          <div className="flex justify-between items-end">
+                            <div className="space-y-1">
+                              <p className="text-[8px] font-black uppercase tracking-widest opacity-60">Account Holder</p>
+                              <p className="text-sm font-black uppercase tracking-widest">Matthews</p>
+                            </div>
+                            <div className="text-right space-y-1">
+                              <p className="text-[8px] font-black uppercase tracking-widest opacity-60">Reference</p>
+                              <p className="text-sm font-black uppercase tracking-widest">Sub30</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-6">
+                      <div className="bg-gray-50 p-6 rounded-2xl border border-gray-100 space-y-4">
+                        <div className="flex justify-between items-center">
+                          <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Monthly Fee</span>
+                          <span className="text-lg font-black text-gray-900">R 299,99</span>
+                        </div>
+                        <div className="h-px bg-gray-200" />
+                        <p className="text-[10px] font-bold text-gray-500 leading-relaxed uppercase tracking-wider">
+                          Please perform a bank transfer to the account details shown on the left. Ensure you use the correct reference <span className="text-blue-600 font-black">Sub30</span> for automatic processing.
+                        </p>
+                      </div>
+
+                      <div className="space-y-3">
+                         <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Upload Proof of Payment</p>
+                         <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-200 rounded-3xl cursor-pointer hover:bg-gray-50 transition-all group relative overflow-hidden">
+                            {uploadingPop ? (
+                              <Loader2 className="w-6 h-6 text-blue-600 animate-spin" />
+                            ) : (
+                              <>
+                                <Upload className="w-6 h-6 text-gray-300 group-hover:text-blue-500 transition-colors mb-2" />
+                                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest group-hover:text-blue-500 transition-colors">Select Document</span>
+                              </>
+                            )}
+                            <input type="file" className="hidden" accept="image/*" onChange={handleSubPayment} disabled={uploadingPop} />
+                         </label>
+                      </div>
+
+                      <AnimatePresence>
+                        {showSubSuccess && (
+                          <motion.div 
+                            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                            className="bg-green-50 text-green-700 p-6 rounded-3xl border-2 border-green-100 flex flex-col items-center text-center space-y-3 shadow-xl shadow-green-100"
+                          >
+                             <div className="w-12 h-12 bg-green-500 text-white rounded-full flex items-center justify-center shadow-lg animate-bounce">
+                               <Check className="w-6 h-6" />
+                             </div>
+                             <div className="space-y-1">
+                               <h4 className="text-sm font-black uppercase tracking-tighter text-green-800">Congratulations!</h4>
+                               <p className="text-[10px] font-black uppercase tracking-widest text-green-600">Payment Submitted Successfully</p>
+                             </div>
+                             <p className="text-[9px] font-bold uppercase tracking-widest opacity-80 leading-relaxed">
+                               Well done! Your proof of payment has been delivered to the Admin. Verification usually takes 15-25 minutes.
+                             </p>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
           </AnimatePresence>
         </div>
       </div>
+
+      {/* Splash Preview Modal */}
+      <AnimatePresence>
+        {showPreview && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[3000] bg-white flex flex-col items-center justify-center p-12 text-center"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ delay: 0.2 }}
+              className="space-y-8"
+            >
+              <h2 
+                style={{ 
+                  fontFamily: branding.fontFamily,
+                  fontSize: branding.fontSize,
+                  color: branding.fontColor
+                }}
+                className="font-black leading-tight"
+              >
+                {branding.appName || 'Your App Name'}
+              </h2>
+              <div className="w-12 h-1 bg-blue-600 mx-auto rounded-full animate-pulse" />
+              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Welcome to your personalized experience</p>
+            </motion.div>
+            
+            <div className="absolute bottom-12 left-1/2 -translate-x-1/2 flex items-center space-x-2">
+              <div className="w-48 h-1 bg-gray-100 rounded-full overflow-hidden">
+                <motion.div 
+                  initial={{ width: 0 }}
+                  animate={{ width: '100%' }}
+                  transition={{ duration: 5, ease: "linear" }}
+                  className="h-full bg-blue-600"
+                />
+              </div>
+              <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Preview ends in 5s</span>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Full Screen View Modal */}
       <AnimatePresence>
