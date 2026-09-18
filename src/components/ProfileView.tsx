@@ -178,6 +178,7 @@ export default function ProfileView() {
       setBusinessesList(list);
     }, (err) => {
       console.warn("Could not listen to businesses list", err);
+      handleFirestoreError(err, OperationType.LIST, 'businesses');
     });
     return () => unsub();
   }, [user]);
@@ -231,6 +232,7 @@ export default function ProfileView() {
             documentName: businessDocName,
             proofImage: base64String,
             status: 'pending',
+            location: profile.location || null,
             createdAt: new Date().toISOString()
           });
 

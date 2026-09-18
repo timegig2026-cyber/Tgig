@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { db, collection, query, onSnapshot, updateDoc, doc, where } from '../lib/firebase';
+import { db, collection, query, onSnapshot, updateDoc, doc, where, handleFirestoreError, OperationType } from '../lib/firebase';
 import { 
   Users, ShieldCheck, DollarSign, ArrowLeft, Check, X, FileText, Loader2, 
   TrendingUp, Search, Palette, Eye, CreditCard, Upload, Lock, Copy, CheckCircle2, 
@@ -198,13 +198,14 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
     // Query businesses under this tenant
     const qBusinesses = query(collection(db, 'businesses'), where('tenantId', '==', user.uid));
     const unsubBusinesses = onSnapshot(qBusinesses, (snapshot) => {
-      const list = snapshot.docs.map(doc => ({
-        businessId: doc.id,
-        ...doc.data()
-      }));
-      setBusinesses(list);
+       const list = snapshot.docs.map(doc => ({
+         businessId: doc.id,
+         ...doc.data()
+       }));
+       setBusinesses(list);
     }, (err) => {
-      console.warn("Could not load businesses in tenant portal", err);
+       console.warn("Could not load businesses in tenant portal", err);
+       handleFirestoreError(err, OperationType.LIST, 'businesses');
     });
 
     return () => {
@@ -522,6 +523,7 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
         documentName: newBizDocName,
         proofImage: newBizImage || '',
         status: 'approved',
+        location: profile?.location || null,
         createdAt: new Date().toISOString()
       });
 
@@ -1769,14 +1771,14 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-[2100] bg-black/95 flex flex-col p-6"
           >
-            <div className="flex items-center justify-between text-white mb-8">
+            <div className="flex items-center justify-between text-white shrink-0 mb-6 pb-4 border-b border-white/10">
               <div className="flex items-center space-x-4">
                 <div className="w-12 h-12 rounded-2xl bg-indigo-900/60 flex items-center justify-center shrink-0 border border-white/20">
                   <Building2 className="w-6 h-6 text-white" />
                 </div>
                 <div>
                   <h3 className="text-lg font-black uppercase tracking-tight">{selectedBusiness.name}</h3>
-                  <p className="text-[10px] text-white/50 font-black uppercase tracking-widest">{selectedBusiness.documentName || 'Supporting Document'}</p>
+                  <p className="text-[10px] text-white/50 font-black uppercase tracking-widest">Compliance Review Dashboard</p>
                 </div>
               </div>
               <button onClick={() => setSelectedBusiness(null)} className="p-2 hover:bg-white/10 rounded-full transition-colors">
@@ -1784,36 +1786,146 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
               </button>
             </div>
             
-            <div className="flex-1 flex items-center justify-center">
-              {selectedBusiness.proofImage ? (
-                <img 
-                  src={selectedBusiness.proofImage} 
-                  alt="Full Document" 
-                  className="max-w-full max-h-full object-contain shadow-2xl rounded-xl"
-                />
-              ) : (
-                <div className="text-white text-center text-xs font-bold uppercase tracking-widest">
-                  No Document Attachment
+            {/* Multi-Panel Compliance Details View */}
+            <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-8 text-white max-w-7xl mx-auto w-full pb-6">
+              {/* Left Column: Uploaded Documents */}
+              <div className="space-y-6 flex flex-col">
+                <span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest block">Uploaded Files & Credentials</span>
+                
+                {/* Logo Picture */}
+                <div className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-2">
+                  <span className="text-[9px] font-black text-white/50 uppercase tracking-wider block">Business Profile Logo</span>
+                  {selectedBusiness.proofImage ? (
+                    <div className="h-44 flex items-center justify-center bg-slate-900/80 rounded-xl overflow-hidden p-2">
+                      <img 
+                        src={selectedBusiness.proofImage} 
+                        alt="Profile Logo" 
+                        className="max-h-full max-w-full object-contain"
+                      />
+                    </div>
+                  ) : (
+                    <div className="h-44 flex items-center justify-center bg-slate-900/50 rounded-xl text-xs text-white/30 italic uppercase font-black tracking-wider">
+                      No Logo Picture Attached
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
 
-            {selectedBusiness.status === 'pending' && (
-              <div className="grid grid-cols-2 gap-4 mt-8">
-                <button 
-                  onClick={() => handleApproveBusiness(selectedBusiness.businessId)}
-                  className="bg-emerald-600 text-white py-5 rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl shadow-emerald-950/40"
-                >
-                  Approve Registration
-                </button>
-                <button 
-                  onClick={() => handleRejectBusiness(selectedBusiness.businessId)}
-                  className="bg-white/10 text-white py-5 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-white/20 transition-colors"
-                >
-                  Reject Registration
-                </button>
+                {/* Supported Compliance Documents */}
+                <div className="bg-white/5 border border-white/10 rounded-2xl p-4 flex-1 flex flex-col justify-between space-y-4">
+                  <div>
+                    <span className="text-[9px] font-black text-white/50 uppercase tracking-wider block mb-2">
+                      Supported Document: <span className="text-indigo-400 font-bold">{selectedBusiness.documentName || 'Compliance Certificate'}</span>
+                    </span>
+                    {selectedBusiness.documentImage ? (
+                      <div className="h-64 flex items-center justify-center bg-slate-900/80 rounded-xl overflow-hidden p-2">
+                        <img 
+                          src={selectedBusiness.documentImage} 
+                          alt="Supporting Certificate" 
+                          className="max-h-full max-w-full object-contain"
+                        />
+                      </div>
+                    ) : selectedBusiness.proofImage ? (
+                      <div className="h-64 flex items-center justify-center bg-slate-900/80 rounded-xl overflow-hidden p-2">
+                        <img 
+                          src={selectedBusiness.proofImage} 
+                          alt="Fallback Certificate" 
+                          className="max-h-full max-w-full object-contain"
+                        />
+                      </div>
+                    ) : (
+                      <div className="h-64 flex items-center justify-center bg-slate-900/50 rounded-xl text-xs text-white/30 italic uppercase font-black tracking-wider">
+                        No Compliance Document Attached
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
-            )}
+
+              {/* Right Column: Profile details & Location */}
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-6 flex flex-col justify-between space-y-6">
+                <div className="space-y-5">
+                  <span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest block border-b border-white/10 pb-2">Business Profile Information</span>
+                  
+                  {/* Name & Owner */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <span className="text-[9px] text-white/40 uppercase tracking-wider block">Company/Service Name</span>
+                      <span className="text-sm font-black text-white">{selectedBusiness.name}</span>
+                    </div>
+                    <div>
+                      <span className="text-[9px] text-white/40 uppercase tracking-wider block">Applicant / Owner</span>
+                      <span className="text-sm font-black text-white">{selectedBusiness.ownerName || 'Self'}</span>
+                    </div>
+                  </div>
+
+                  {/* Contacts */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <span className="text-[9px] text-white/40 uppercase tracking-wider block">Contact Phone</span>
+                      <span className="text-xs font-mono font-bold text-white">{selectedBusiness.phone || 'Not Provided'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[9px] text-white/40 uppercase tracking-wider block">Contact Email</span>
+                      <span className="text-xs font-mono font-bold text-white break-all">{selectedBusiness.email || 'Not Provided'}</span>
+                    </div>
+                  </div>
+
+                  {/* Addresses */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <span className="text-[9px] text-white/40 uppercase tracking-wider block">Street Address</span>
+                      <span className="text-xs font-bold text-white">{selectedBusiness.streetAddress || 'Not Provided'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[9px] text-white/40 uppercase tracking-wider block">Province</span>
+                      <span className="text-xs font-bold text-white">{selectedBusiness.province || 'Not Provided'}</span>
+                    </div>
+                  </div>
+
+                  {/* Geographic Location Coordinates */}
+                  <div>
+                    <span className="text-[9px] text-white/40 uppercase tracking-wider block">Pinpointed Map Location</span>
+                    {selectedBusiness.location ? (
+                      <span className="text-xs font-mono font-bold text-indigo-300">
+                        Coordinates: {selectedBusiness.location.lat.toFixed(6)}, {selectedBusiness.location.lng.toFixed(6)}
+                      </span>
+                    ) : (
+                      <span className="text-xs font-medium italic text-white/30">No Geographic Location Pinned</span>
+                    )}
+                  </div>
+
+                  {/* Description */}
+                  <div className="pt-4 border-t border-white/10 space-y-1">
+                    <span className="text-[9px] text-white/40 uppercase tracking-wider block">Service Description</span>
+                    <p className="text-xs text-white/80 font-medium leading-relaxed whitespace-pre-wrap">
+                      {selectedBusiness.description || 'No business description provided.'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Decisions action buttons */}
+                {selectedBusiness.status === 'pending' ? (
+                  <div className="grid grid-cols-2 gap-4 pt-4 border-t border-white/10 shrink-0">
+                    <button 
+                      onClick={() => handleApproveBusiness(selectedBusiness.businessId)}
+                      className="bg-emerald-600 hover:bg-emerald-500 text-white py-4 rounded-xl text-xs font-black uppercase tracking-widest shadow-xl shadow-emerald-950/40 transition-colors"
+                    >
+                      Approve Profile
+                    </button>
+                    <button 
+                      onClick={() => handleRejectBusiness(selectedBusiness.businessId)}
+                      className="bg-white/10 text-white hover:bg-white/20 py-4 rounded-xl text-xs font-black uppercase tracking-widest transition-colors"
+                    >
+                      Reject Profile
+                    </button>
+                  </div>
+                ) : (
+                  <div className="text-center py-4 bg-white/5 rounded-xl text-xs font-black uppercase tracking-wider text-white/40 shrink-0">
+                    Registration Reviewed • Status: <span className={selectedBusiness.status === 'approved' ? 'text-emerald-400' : 'text-red-400'}>{selectedBusiness.status}</span>
+                  </div>
+                )}
+              </div>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

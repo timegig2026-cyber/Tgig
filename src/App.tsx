@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Map as MapIcon, User as UserIcon, Search, Bell } from 'lucide-react';
+import { Map as MapIcon, User as UserIcon, Search, Bell, Building2 } from 'lucide-react';
 import GiGsMap from './components/GiGsMap';
 import ProfileView from './components/ProfileView';
 import SeekersView from './components/SeekersView';
 import SeekerProfileView from './components/SeekerProfileView';
 import NotificationsView from './components/NotificationsView';
+import BusinessesListView from './components/BusinessesListView';
 import GuidedTour from './components/GuidedTour';
 import { AuthProvider } from './components/AuthProvider';
 
@@ -14,7 +15,7 @@ import { useAuth } from './components/AuthProvider';
 import { OfflineIndicator } from './components/PWAControls';
 import { speak } from './lib/voice';
 
-type ViewType = 'gigs' | 'seekers' | 'profile' | 'notifications';
+type ViewType = 'gigs' | 'seekers' | 'profile' | 'notifications' | 'businesses';
 
 // Simple notification sound (base64 beep)
 const BEEP_SOUND = 'data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YTdvT18AZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YTdvT18A';
@@ -229,6 +230,8 @@ function MainApp() {
         return <ProfileView />;
       case 'notifications':
         return <NotificationsView onClose={() => setCurrentView('gigs')} />;
+      case 'businesses':
+        return <BusinessesListView />;
     }
   };
 
@@ -302,6 +305,12 @@ function MainApp() {
       {/* Persistent Bottom Menu Bar */}
       <nav className="fixed bottom-0 left-0 right-0 h-14 bg-white border-t border-gray-100 flex items-center justify-around px-4 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] z-50">
         <NavButton 
+          active={currentView === 'businesses'} 
+          onClick={() => handleNavClick('businesses')}
+          icon={<Building2 className="w-5 h-5" />}
+          label="Businesses"
+        />
+        <NavButton 
           active={currentView === 'seekers'} 
           onClick={() => handleNavClick('seekers')}
           icon={<Search className="w-5 h-5" />}
@@ -333,14 +342,45 @@ function MainApp() {
   );
 }
 
+const playClickSound = () => {
+  try {
+    const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContext) return;
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    
+    osc.type = 'sine';
+    // Modern UI click/tap tone
+    osc.frequency.setValueAtTime(900, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(200, ctx.currentTime + 0.06);
+    
+    gain.gain.setValueAtTime(0.06, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.06);
+    
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    
+    osc.start();
+    osc.stop(ctx.currentTime + 0.06);
+  } catch (e) {
+    console.warn("Audio feedback omitted", e);
+  }
+};
+
 function NavButton({ active, onClick, icon, label, badge }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string, badge?: number }) {
+  const handleClick = () => {
+    playClickSound();
+    onClick();
+  };
+
   return (
     <button
-      onClick={onClick}
+      onClick={handleClick}
       className="flex flex-col items-center justify-center space-y-0.5 group relative w-16"
       aria-label={label}
     >
-      <div className={`p-1.5 rounded-xl transition-all duration-300 ${active ? 'bg-gray-900 text-white shadow-lg -translate-y-0.5' : 'text-gray-400 hover:bg-gray-50'}`}>
+      <div className={`p-1.5 rounded-xl transition-all duration-300 ${active ? 'bg-red-500 text-white shadow-lg shadow-red-500/25 -translate-y-0.5' : 'text-black hover:bg-gray-100'}`}>
         {icon}
         {badge !== undefined && badge > 0 && (
           <motion.span 
@@ -352,13 +392,13 @@ function NavButton({ active, onClick, icon, label, badge }: { active: boolean, o
           </motion.span>
         )}
       </div>
-      <span className={`text-[9px] font-bold uppercase tracking-widest transition-colors ${active ? 'text-gray-900' : 'text-gray-400'}`}>
+      <span className={`text-[9px] font-bold uppercase tracking-widest transition-colors ${active ? 'text-red-600' : 'text-black'}`}>
         {label}
       </span>
       {active && (
         <motion.div 
           layoutId="activeTab"
-          className="absolute -bottom-2 w-1 h-1 bg-gray-900 rounded-full"
+          className="absolute -bottom-2 w-1 h-1 bg-red-500 rounded-full"
         />
       )}
     </button>

@@ -76,8 +76,11 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow get: if isSignedIn() || (resource != null && (resource.data.get('role', 'seeker') == 'seeker' || resource.data.get('isTenantApproved', false) == true));
-      allow list: if (resource.data.get('role', 'seeker') == 'seeker') || (isSignedIn() && (resource.data.get('tenantId', '') == request.auth.uid || isAdmin()));
+      allow get: if isSignedIn();
+      allow get: if resource != null && resource.data.role == 'seeker';
+      allow get: if resource != null && resource.data.isTenantApproved == true;
+      allow list: if resource.data.role == 'seeker';
+      allow list: if isSignedIn() && (resource.data.tenantId == request.auth.uid || isAdmin());
       allow create: if isOwner(userId) && isValidUserProfile(incoming()) && incoming().userId == userId && (!('isAdmin' in incoming()) || incoming().isAdmin == false);
       allow update: if isOwner(userId) && isValidUserProfile(incoming()) && incoming().userId == userId && ((!request.resource.data.diff(resource.data).affectedKeys().hasAny(['isAdmin', 'isTenantApproved', 'isTenantDisabled', 'subscriptionActive', 'subscriptionExpiresAt'])) || isAdmin());
       allow update: if isAdmin() &&
@@ -226,6 +229,41 @@ service cloud.firestore {
                     incoming().subId == existing().subId &&
                     incoming().tenantId == existing().tenantId &&
                     incoming().createdAt == existing().createdAt;
+    }
+
+    // --- Businesses ---
+    function isValidBusiness(data) {
+      return data.keys().hasAll(['businessId', 'name', 'ownerId', 'ownerName', 'tenantId', 'status', 'createdAt']) &&
+             data.businessId is string &&
+             data.name is string && data.name.size() <= 200 &&
+             data.ownerId is string &&
+             data.ownerName is string &&
+             data.tenantId is string &&
+             data.status in ['pending', 'approved', 'rejected'] &&
+             data.createdAt is string &&
+             (!('email' in data) || (data.email is string && data.email.size() <= 150)) &&
+             (!('phone' in data) || (data.phone is string && data.phone.size() <= 50)) &&
+             (!('description' in data) || (data.description is string && data.description.size() <= 1000)) &&
+             (!('streetAddress' in data) || (data.streetAddress is string && data.streetAddress.size() <= 300)) &&
+             (!('province' in data) || (data.province is string && data.province.size() <= 100)) &&
+             (!('documentName' in data) || (data.documentName is string && data.documentName.size() <= 200)) &&
+             (!('proofImage' in data) || data.proofImage is string) &&
+             (!('documentImage' in data) || data.documentImage is string) &&
+             (!('location' in data) || data.location == null || (data.location.lat is number && data.location.lng is number));
+    }
+
+    match /businesses/{businessId} {
+      allow get: if resource.data.status == 'approved';
+      allow get: if isSignedIn() && (resource.data.ownerId == request.auth.uid || resource.data.tenantId == request.auth.uid || isAdmin());
+      allow list: if resource.data.status == 'approved';
+      allow list: if isSignedIn() && (resource.data.ownerId == request.auth.uid || resource.data.tenantId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && isValidBusiness(incoming()) && isValidId(businessId) && (incoming().ownerId == request.auth.uid || incoming().tenantId == request.auth.uid);
+      allow update: if isSignedIn() && isValidBusiness(incoming()) && (
+                    isAdmin() ||
+                    (resource.data.tenantId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt'])) ||
+                    (resource.data.ownerId == request.auth.uid && incoming().status == existing().status && incoming().ownerId == existing().ownerId && incoming().tenantId == existing().tenantId && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'email', 'description', 'documentName', 'proofImage', 'location', 'updatedAt']))
+                    );
+      allow delete: if isSignedIn() && (resource.data.ownerId == request.auth.uid || isAdmin());
     }
   }
 }

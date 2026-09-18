@@ -187,6 +187,36 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["subId", "tenantId", "proofImage", "status", "createdAt"]
+    },
+    "Business": {
+      "title": "Business",
+      "description": "A business registered by a member or directly by a tenant.",
+      "type": "object",
+      "properties": {
+        "businessId": { "type": "string" },
+        "name": { "type": "string", "maxLength": 200 },
+        "email": { "type": "string", "maxLength": 150 },
+        "phone": { "type": "string", "maxLength": 50 },
+        "description": { "type": "string", "maxLength": 1000 },
+        "streetAddress": { "type": "string", "maxLength": 300 },
+        "province": { "type": "string", "maxLength": 100 },
+        "documentName": { "type": "string", "maxLength": 200 },
+        "proofImage": { "type": "string", "description": "Base64 encoded brand/profile logo picture." },
+        "documentImage": { "type": "string", "description": "Base64 encoded supporting business registration document." },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "ownerId": { "type": "string" },
+        "ownerName": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "location": {
+          "type": "object",
+          "properties": {
+            "lat": { "type": "number" },
+            "lng": { "type": "number" }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["businessId", "name", "ownerId", "ownerName", "tenantId", "status", "createdAt"]
     }
   },
   "firestore": {
@@ -213,6 +243,10 @@
     "/tenantSubscriptions/{subId}": {
       "schema": "TenantSubscription",
       "description": "Tenant subscription payment records."
+    },
+    "/businesses/{businessId}": {
+      "schema": "Business",
+      "description": "Business documents and registered company details."
     }
   }
 }
