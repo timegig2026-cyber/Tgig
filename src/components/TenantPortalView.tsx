@@ -521,7 +521,7 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
 
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
                     {/* 3D Realistic Bank Card */}
-                    <div className="relative w-full aspect-[1.6/1] rounded-3xl p-8 text-white shadow-[0_25px_50px_-12px_rgba(0,0,0,0.35)] overflow-hidden group transform perspective-[1000px] hover:rotate-x-3 hover:rotate-y-3 transition-transform duration-500 bg-gradient-to-tr from-slate-900 via-indigo-950 to-blue-900 border border-white/10">
+                    <div className="relative w-full aspect-[1.6/1] rounded-3xl p-6 md:p-8 text-white shadow-[0_25px_50px_-12px_rgba(0,0,0,0.35)] overflow-hidden group transform perspective-[1000px] hover:rotate-x-3 hover:rotate-y-3 transition-transform duration-500 bg-gradient-to-tr from-slate-950 via-indigo-950 to-blue-950 border border-white/15">
                       {/* Holographic foil shine effect */}
                       <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-60 pointer-events-none transform -skew-x-12 translate-x-[-150%] group-hover:translate-x-[150%] transition-transform duration-1000" />
                       
@@ -530,36 +530,53 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
                       <div className="absolute -bottom-20 -left-20 w-48 h-48 bg-teal-500/20 rounded-full blur-2xl" />
 
                       <div className="relative h-full flex flex-col justify-between z-10">
+                        {/* Top Row: Bank name, Contactless symbol, EMV Chip */}
                         <div className="flex justify-between items-start">
-                          <div className="space-y-1">
-                            <p className="text-[9px] font-black uppercase tracking-[0.25em] text-cyan-400 drop-shadow">Capitec Bank</p>
+                          <div className="flex items-center space-x-3">
                             {/* Realistic EMV Gold Chip with 3D embossed look */}
-                            <div className="w-12 h-9 bg-gradient-to-br from-amber-200 via-yellow-400 to-amber-500 rounded-lg shadow-[inset_0_2px_4px_rgba(255,255,255,0.6),0_2px_4px_rgba(0,0,0,0.3)] border border-amber-300/50 flex flex-col justify-between p-1">
+                            <div className="w-11 h-8 bg-gradient-to-br from-amber-200 via-yellow-400 to-amber-500 rounded-md shadow-[inset_0_2px_4px_rgba(255,255,255,0.6),0_2px_4px_rgba(0,0,0,0.3)] border border-amber-300/50 flex flex-col justify-between p-1">
                               <div className="w-full h-px bg-amber-800/30" />
                               <div className="w-full h-px bg-amber-800/30" />
                               <div className="w-full h-px bg-amber-800/30" />
                             </div>
+                            {/* Contactless symbol */}
+                            <div className="text-white/60">
+                              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M8.111 16.404a5.5 5.5 0 010-7.778M12 20a9 9 0 000-16m3.889 15.614a11 11 0 000-15.556" />
+                              </svg>
+                            </div>
                           </div>
+
                           <div className="text-right">
-                            <span className="text-lg font-black italic tracking-wider bg-gradient-to-r from-white via-gray-200 to-white bg-clip-text text-transparent drop-shadow">VISA</span>
-                            <div className="text-[7px] font-bold uppercase tracking-widest text-white/60">Debit</div>
+                            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-400 drop-shadow">Capitec Bank</p>
+                            <span className="text-sm font-black italic tracking-wider bg-gradient-to-r from-white via-gray-200 to-white bg-clip-text text-transparent drop-shadow">VISA</span>
                           </div>
                         </div>
 
-                        <div className="space-y-3">
-                          {/* Embossed 3D card numbers */}
-                          <p className="text-2xl font-mono tracking-[0.2em] font-black text-white/95 drop-shadow-[0_2px_3px_rgba(0,0,0,0.8)] filter">
-                            1334 <span className="opacity-60">••••</span> <span className="opacity-60">••••</span> 0673
+                        {/* Middle Row: Full 16-digit card number */}
+                        <div className="space-y-1">
+                          <div className="text-[7px] font-black uppercase tracking-widest text-white/40">Card Number</div>
+                          <p className="text-xl md:text-2xl font-mono tracking-[0.18em] font-black text-white/95 drop-shadow-[0_2px_3px_rgba(0,0,0,0.8)] filter">
+                            1334 0673 8892 0673
                           </p>
-                          <div className="flex justify-between items-end pt-2 border-t border-white/10">
+                        </div>
+
+                        {/* Bottom Row: Expiry, CVV, Cardholder Name, Reference */}
+                        <div className="flex justify-between items-end pt-2 border-t border-white/10">
+                          <div className="flex space-x-4">
                             <div className="space-y-0.5">
-                              <p className="text-[7px] font-black uppercase tracking-widest text-white/50">Cardholder Name</p>
-                              <p className="text-xs font-black uppercase tracking-wider text-white drop-shadow">Matthews</p>
+                              <p className="text-[6px] font-black uppercase tracking-widest text-white/50">Expires</p>
+                              <p className="text-[11px] font-mono font-black text-white">09/28</p>
                             </div>
-                            <div className="text-right space-y-0.5">
-                              <p className="text-[7px] font-black uppercase tracking-widest text-white/50">Reference Code</p>
-                              <p className="text-xs font-black font-mono text-cyan-300 tracking-widest bg-white/10 px-2 py-0.5 rounded border border-white/10 shadow-inner">Sub30</p>
+                            <div className="space-y-0.5">
+                              <p className="text-[6px] font-black uppercase tracking-widest text-white/50">CVV</p>
+                              <p className="text-[11px] font-mono font-black text-cyan-300">482</p>
                             </div>
+                          </div>
+
+                          <div className="space-y-0.5 text-right">
+                            <p className="text-[6px] font-black uppercase tracking-widest text-white/50">Cardholder Name</p>
+                            <p className="text-[11px] font-black uppercase tracking-wider text-white drop-shadow">Matthews</p>
                           </div>
                         </div>
                       </div>
