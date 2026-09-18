@@ -520,32 +520,45 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
                   </div>
 
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
-                    {/* Realistic Bank Card */}
-                    <div className="relative w-full aspect-[1.6/1] bg-gradient-to-br from-teal-500 to-blue-700 rounded-3xl p-8 text-white shadow-2xl overflow-hidden group">
-                      <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -mr-32 -mt-32 blur-3xl" />
-                      <div className="relative h-full flex flex-col justify-between">
+                    {/* 3D Realistic Bank Card */}
+                    <div className="relative w-full aspect-[1.6/1] rounded-3xl p-8 text-white shadow-[0_25px_50px_-12px_rgba(0,0,0,0.35)] overflow-hidden group transform perspective-[1000px] hover:rotate-x-3 hover:rotate-y-3 transition-transform duration-500 bg-gradient-to-tr from-slate-900 via-indigo-950 to-blue-900 border border-white/10">
+                      {/* Holographic foil shine effect */}
+                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-60 pointer-events-none transform -skew-x-12 translate-x-[-150%] group-hover:translate-x-[150%] transition-transform duration-1000" />
+                      
+                      {/* Background ambient lighting */}
+                      <div className="absolute -top-20 -right-20 w-48 h-48 bg-blue-500/30 rounded-full blur-2xl" />
+                      <div className="absolute -bottom-20 -left-20 w-48 h-48 bg-teal-500/20 rounded-full blur-2xl" />
+
+                      <div className="relative h-full flex flex-col justify-between z-10">
                         <div className="flex justify-between items-start">
                           <div className="space-y-1">
-                            <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-80">Capitec Bank</p>
-                            <div className="w-10 h-8 bg-yellow-400/90 rounded-lg shadow-inner flex items-center justify-center">
-                              <div className="w-6 h-0.5 bg-black/10 my-1" />
+                            <p className="text-[9px] font-black uppercase tracking-[0.25em] text-cyan-400 drop-shadow">Capitec Bank</p>
+                            {/* Realistic EMV Gold Chip with 3D embossed look */}
+                            <div className="w-12 h-9 bg-gradient-to-br from-amber-200 via-yellow-400 to-amber-500 rounded-lg shadow-[inset_0_2px_4px_rgba(255,255,255,0.6),0_2px_4px_rgba(0,0,0,0.3)] border border-amber-300/50 flex flex-col justify-between p-1">
+                              <div className="w-full h-px bg-amber-800/30" />
+                              <div className="w-full h-px bg-amber-800/30" />
+                              <div className="w-full h-px bg-amber-800/30" />
                             </div>
                           </div>
                           <div className="text-right">
-                             <p className="text-sm font-black uppercase italic">VISA</p>
+                            <span className="text-lg font-black italic tracking-wider bg-gradient-to-r from-white via-gray-200 to-white bg-clip-text text-transparent drop-shadow">VISA</span>
+                            <div className="text-[7px] font-bold uppercase tracking-widest text-white/60">Debit</div>
                           </div>
                         </div>
 
-                        <div className="space-y-4">
-                          <p className="text-2xl font-mono tracking-[0.15em] font-bold">1334 0673 66</p>
-                          <div className="flex justify-between items-end">
-                            <div className="space-y-1">
-                              <p className="text-[8px] font-black uppercase tracking-widest opacity-60">Account Holder</p>
-                              <p className="text-sm font-black uppercase tracking-widest">Matthews</p>
+                        <div className="space-y-3">
+                          {/* Embossed 3D card numbers */}
+                          <p className="text-2xl font-mono tracking-[0.2em] font-black text-white/95 drop-shadow-[0_2px_3px_rgba(0,0,0,0.8)] filter">
+                            1334 <span className="opacity-60">••••</span> <span className="opacity-60">••••</span> 0673
+                          </p>
+                          <div className="flex justify-between items-end pt-2 border-t border-white/10">
+                            <div className="space-y-0.5">
+                              <p className="text-[7px] font-black uppercase tracking-widest text-white/50">Cardholder Name</p>
+                              <p className="text-xs font-black uppercase tracking-wider text-white drop-shadow">Matthews</p>
                             </div>
-                            <div className="text-right space-y-1">
-                              <p className="text-[8px] font-black uppercase tracking-widest opacity-60">Reference</p>
-                              <p className="text-sm font-black uppercase tracking-widest">Sub30</p>
+                            <div className="text-right space-y-0.5">
+                              <p className="text-[7px] font-black uppercase tracking-widest text-white/50">Reference Code</p>
+                              <p className="text-xs font-black font-mono text-cyan-300 tracking-widest bg-white/10 px-2 py-0.5 rounded border border-white/10 shadow-inner">Sub30</p>
                             </div>
                           </div>
                         </div>
