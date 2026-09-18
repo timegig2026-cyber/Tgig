@@ -23,7 +23,6 @@ function MainApp() {
   const { user, profile } = useAuth();
   const [currentView, setCurrentView] = useState<ViewType>('gigs');
   const [viewingSeekerId, setViewingSeekerId] = useState<string | null>(null);
-  const [branding, setBranding] = useState<any>(null);
   const [showSplash, setShowSplash] = useState(true);
   const [isSubscribed, setIsSubscribed] = useState(true);
   const [newGigsCount, setNewGigsCount] = useState(0);
@@ -168,17 +167,10 @@ function MainApp() {
         if (data.isTenantApproved) {
           const subActive = data.subscriptionActive === true;
           setIsSubscribed(subActive || trialActive || isMainAdmin);
-
-          if ((subActive || trialActive || isMainAdmin) && data.branding) {
-            setBranding(data.branding);
-          } else {
-            setBranding(null);
-          }
         } else {
           // For Seekers
           const seekerSubActive = data.userSubscriptionActive === true;
           setIsSubscribed(seekerSubActive || trialActive || data.isAdmin || isMainAdmin);
-          setBranding(null);
         }
       }
     }, (error) => {
@@ -200,13 +192,7 @@ function MainApp() {
       >
         {/* Blurry Map Wallpaper Background */}
         <div 
-          className="absolute inset-0 opacity-20 scale-110"
-          style={{
-            backgroundImage: `url('https://images.unsplash.com/photo-1526778548025-fa2f459cd5c1?auto=format&fit=crop&q=80&w=2000')`,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-            filter: 'blur(12px)'
-          }}
+          className="absolute inset-0 bg-white"
         />
         
         <motion.div

@@ -38,8 +38,18 @@ export default function ProfileView() {
   const [uploading, setUploading] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [showTenantPortal, setShowTenantPortal] = useState(false);
-  const [tenantPortalTab, setTenantPortalTab] = useState<'overview' | 'pop' | 'branding' | 'subscription'>('overview');
+  const [tenantPortalTab, setTenantPortalTab] = useState<'overview' | 'pop' | 'users' | 'subscription'>('overview');
   const [showAdminPortal, setShowAdminPortal] = useState(false);
+  
+  // Business Registration States
+  const [businessName, setBusinessName] = useState('');
+  const [businessEmail, setBusinessEmail] = useState('');
+  const [businessDocName, setBusinessDocName] = useState('CIPC Certificate');
+  const [businessDesc, setBusinessDesc] = useState('');
+  const [uploadingBusinessDoc, setUploadingBusinessDoc] = useState(false);
+  const [businessSuccess, setBusinessSuccess] = useState(false);
+  const [businessesList, setBusinessesList] = useState<any[]>([]);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [tenantPayments, setTenantPayments] = useState<any[]>([]);
   const [uploadingTenantPop, setUploadingTenantPop] = useState(false);
@@ -156,6 +166,98 @@ export default function ProfileView() {
     });
     return () => unsub();
   }, [user, profile?.tenantId]);
+
+  useEffect(() => {
+    if (!user) return;
+    const q = query(collection(db, 'businesses'), where('ownerId', '==', user.uid));
+    const unsub = onSnapshot(q, (snapshot) => {
+      const list = snapshot.docs.map(doc => ({
+        businessId: doc.id,
+        ...doc.data()
+      }));
+      setBusinessesList(list);
+    }, (err) => {
+      console.warn("Could not listen to businesses list", err);
+    });
+    return () => unsub();
+  }, [user]);
+
+  const handleUploadBusinessDocument = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user || !profile?.tenantId) return;
+
+    if (!businessName.trim()) {
+      setError("Please fill out Business Name before uploading document.");
+      return;
+    }
+
+    setUploadingBusinessDoc(true);
+    setError('');
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = async () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        const maxDim = 800;
+        if (width > height && width > maxDim) {
+          height = (height * maxDim) / width;
+          width = maxDim;
+        } else if (height > maxDim) {
+          width = (width * maxDim) / height;
+          height = maxDim;
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+        
+        const base64String = canvas.toDataURL('image/jpeg', 0.7);
+
+        try {
+          const businessId = `biz_${Date.now()}`;
+          const { setDoc } = await import('../lib/firebase');
+          
+          await setDoc(doc(db, 'businesses', businessId), {
+            businessId,
+            tenantId: profile.tenantId,
+            ownerId: user.uid,
+            ownerName: profile.displayName || 'Anonymous',
+            name: businessName,
+            email: businessEmail || user.email || '',
+            description: businessDesc,
+            documentName: businessDocName,
+            proofImage: base64String,
+            status: 'pending',
+            createdAt: new Date().toISOString()
+          });
+
+          setBusinessSuccess(true);
+          setBusinessName('');
+          setBusinessEmail('');
+          setBusinessDesc('');
+          setTimeout(() => setBusinessSuccess(false), 8000);
+        } catch (err: any) {
+          console.error("Error submitting business document", err);
+          setError(`Business Submission Failed: ${err.message}`);
+        } finally {
+          setUploadingBusinessDoc(false);
+        }
+      };
+      img.onerror = () => {
+        setError("Failed to process image file");
+        setUploadingBusinessDoc(false);
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.onerror = () => {
+      setError("Failed to read file");
+      setUploadingBusinessDoc(false);
+    };
+    reader.readAsDataURL(file);
+  };
 
   const handleUploadTenantPop = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1000,6 +1102,145 @@ export default function ProfileView() {
               )}
             </button>
           </div>
+        </div>
+      )}
+
+      {profile?.tenantId && (
+        <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm space-y-6">
+          <div className="flex items-center space-x-2.5">
+            <Building2 className="w-5 h-5 text-indigo-600" />
+            <div>
+              <h3 className="text-xs font-black text-gray-900 uppercase tracking-widest">
+                Register Your Business
+              </h3>
+              <p className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">
+                Submit documents to {hostTenant?.displayName || 'your tenant'} for verification
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Business Name</label>
+              <input
+                type="text"
+                placeholder="e.g. Apex Cleaning Services"
+                value={businessName}
+                onChange={(e) => setBusinessName(e.target.value)}
+                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Business Email (Optional)</label>
+                <input
+                  type="email"
+                  placeholder="contact@apexcleaning.co.za"
+                  value={businessEmail}
+                  onChange={(e) => setBusinessEmail(e.target.value)}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Document Type</label>
+                <select
+                  value={businessDocName}
+                  onChange={(e) => setBusinessDocName(e.target.value)}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="CIPC Registration Certificate">CIPC Registration Certificate</option>
+                  <option value="Company Tax Certificate">Company Tax Certificate</option>
+                  <option value="ID Copies of Directors">ID Copies of Directors</option>
+                  <option value="Proof of Address">Proof of Address</option>
+                  <option value="Other Registration Document">Other Supporting Document</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Business Description</label>
+              <textarea
+                placeholder="Briefly describe what your business does..."
+                value={businessDesc}
+                onChange={(e) => setBusinessDesc(e.target.value)}
+                rows={3}
+                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            {businessSuccess && (
+              <div className="p-3 bg-emerald-50 text-emerald-700 text-xs font-bold rounded-xl border border-emerald-200 flex items-center space-x-2 animate-in fade-in">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>Business details and document successfully submitted to your tenant!</span>
+              </div>
+            )}
+
+            <div>
+              <input
+                type="file"
+                id="business-doc-upload"
+                onChange={handleUploadBusinessDocument}
+                accept="image/*"
+                className="hidden"
+                disabled={uploadingBusinessDoc}
+              />
+              <label
+                htmlFor="business-doc-upload"
+                className={`w-full bg-blue-900 hover:bg-blue-800 text-white py-3 rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center space-x-2 transition-all shadow-sm cursor-pointer ${
+                  uploadingBusinessDoc ? 'opacity-50 pointer-events-none' : ''
+                }`}
+              >
+                {uploadingBusinessDoc ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <>
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>Upload Supporting Document & Submit Business</span>
+                  </>
+                )}
+              </label>
+            </div>
+          </div>
+
+          {/* Registered Businesses Status List */}
+          {businessesList.length > 0 && (
+            <div className="space-y-3 pt-4 border-t border-gray-100">
+              <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">My Businesses</p>
+              <div className="space-y-3">
+                {businessesList.map((b) => (
+                  <div key={b.businessId} className="bg-gray-50 p-4 rounded-xl border border-gray-200/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                    <div className="space-y-1">
+                      <div className="flex items-center space-x-2">
+                        <span className="font-black text-gray-900 text-sm">{b.name}</span>
+                        <span className={`text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded ${
+                          b.status === 'approved' ? 'bg-green-100 text-green-700' :
+                          b.status === 'rejected' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-700'
+                        }`}>
+                          {b.status}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">{b.documentName}</p>
+                      {b.description && (
+                        <p className="text-[11px] text-gray-600 font-medium leading-relaxed max-w-md">{b.description}</p>
+                      )}
+                    </div>
+
+                    <a
+                      href={b.proofImage}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center space-x-1.5 text-[9px] font-black uppercase tracking-widest text-blue-600 hover:text-blue-800 self-start sm:self-auto shrink-0 transition-colors"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>View Document</span>
+                    </a>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

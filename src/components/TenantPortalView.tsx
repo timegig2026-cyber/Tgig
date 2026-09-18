@@ -39,12 +39,12 @@ interface TenantUser {
 
 interface TenantPortalViewProps {
   onClose: () => void;
-  initialTab?: 'overview' | 'users' | 'pop' | 'branding' | 'subscription';
+  initialTab?: 'overview' | 'users' | 'pop' | 'subscription';
 }
 
 export default function TenantPortalView({ onClose, initialTab = 'overview' }: TenantPortalViewProps) {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'pop' | 'branding' | 'subscription'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'pop' | 'subscription' | 'businesses'>(initialTab);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [tenantUsers, setTenantUsers] = useState<TenantUser[]>([]);
   const [loading, setLoading] = useState(true);
@@ -59,6 +59,18 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [copiedLink, setCopiedLink] = useState(false);
   const [approvingUserId, setApprovingUserId] = useState<string | null>(null);
+
+  // Businesses States
+  const [businesses, setBusinesses] = useState<any[]>([]);
+  const [selectedBusiness, setSelectedBusiness] = useState<any | null>(null);
+  const [showAddBusinessModal, setShowAddBusinessModal] = useState(false);
+  const [newBizName, setNewBizName] = useState('');
+  const [newBizOwner, setNewBizOwner] = useState('');
+  const [newBizEmail, setNewBizEmail] = useState('');
+  const [newBizDocName, setNewBizDocName] = useState('CIPC Registration Certificate');
+  const [newBizDesc, setNewBizDesc] = useState('');
+  const [newBizImage, setNewBizImage] = useState<string | null>(null);
+  const [addingBiz, setAddingBiz] = useState(false);
 
   const activeReferrals = tenantUsers.filter(u => u.userSubscriptionActive).length;
   const adminSubscriptionFee = calculateAdminFee(activeReferrals);
@@ -141,11 +153,7 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
   };
 
   // Branding state
-  const [branding, setBranding] = useState({
-    fontFamily: 'Inter',
-    fontSize: '24px',
-    fontColor: '#000000'
-  });
+  // Branding state removed
 
   useEffect(() => {
     if (!user) return;
@@ -156,9 +164,6 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
       if (doc.exists()) {
         const data = doc.data();
         setProfile(data);
-        if (data.branding) {
-          setBranding(data.branding);
-        }
       }
     }, (err) => {
       console.warn("Could not load profile in tenant portal", err);
@@ -190,10 +195,23 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
       console.warn("Could not load users for tenant", err);
     });
 
+    // Query businesses under this tenant
+    const qBusinesses = query(collection(db, 'businesses'), where('tenantId', '==', user.uid));
+    const unsubBusinesses = onSnapshot(qBusinesses, (snapshot) => {
+      const list = snapshot.docs.map(doc => ({
+        businessId: doc.id,
+        ...doc.data()
+      }));
+      setBusinesses(list);
+    }, (err) => {
+      console.warn("Could not load businesses in tenant portal", err);
+    });
+
     return () => {
       unsubProfile();
       unsubscribe();
       unsubUsers();
+      unsubBusinesses();
     };
   }, [user]);
 
@@ -261,22 +279,6 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
     reader.readAsDataURL(file);
   };
 
-  const handleSaveBranding = async () => {
-    if (!user) return;
-    setSavingBranding(true);
-    try {
-      await updateDoc(doc(db, 'users', user.uid), {
-        branding,
-        updatedAt: new Date().toISOString()
-      });
-      startPreview();
-    } catch (error: any) {
-      console.error("Error saving branding", error);
-      setLastError(`Branding Save Failed: ${error.message} (Code: ${error.code})`);
-    } finally {
-      setSavingBranding(false);
-    }
-  };
 
   const startPreview = () => {
     setShowPreview(true);
@@ -472,6 +474,101 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
     } finally {
       setApprovingUserId(null);
     }
+  };
+
+  const handleApproveBusiness = async (businessId: string) => {
+    try {
+      await updateDoc(doc(db, 'businesses', businessId), {
+        status: 'approved',
+        updatedAt: new Date().toISOString()
+      });
+      setSelectedBusiness(null);
+    } catch (err: any) {
+      console.error("Error approving business", err);
+      setLastError(`Business Approval Failed: ${err.message}`);
+    }
+  };
+
+  const handleRejectBusiness = async (businessId: string) => {
+    try {
+      await updateDoc(doc(db, 'businesses', businessId), {
+        status: 'rejected',
+        updatedAt: new Date().toISOString()
+      });
+      setSelectedBusiness(null);
+    } catch (err: any) {
+      console.error("Error rejecting business", err);
+      setLastError(`Business Rejection Failed: ${err.message}`);
+    }
+  };
+
+  const handleAddBusinessDirectly = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !newBizName.trim()) return;
+
+    setAddingBiz(true);
+    try {
+      const { setDoc } = await import('../lib/firebase');
+      const businessId = `biz_${Date.now()}`;
+      
+      await setDoc(doc(db, 'businesses', businessId), {
+        businessId,
+        tenantId: user.uid,
+        ownerId: user.uid,
+        ownerName: profile?.displayName || 'Tenant (Self)',
+        name: newBizName,
+        email: newBizEmail,
+        description: newBizDesc,
+        documentName: newBizDocName,
+        proofImage: newBizImage || '',
+        status: 'approved',
+        createdAt: new Date().toISOString()
+      });
+
+      setNewBizName('');
+      setNewBizOwner('');
+      setNewBizEmail('');
+      setNewBizDesc('');
+      setNewBizImage(null);
+      setShowAddBusinessModal(false);
+    } catch (err: any) {
+      console.error("Error adding business directly", err);
+      setLastError(`Add Business Failed: ${err.message}`);
+    } finally {
+      setAddingBiz(false);
+    }
+  };
+
+  const handleBizImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        const maxDim = 800;
+        if (width > height && width > maxDim) {
+          height = (height * maxDim) / width;
+          width = maxDim;
+        } else if (height > maxDim) {
+          width = (width * maxDim) / height;
+          height = maxDim;
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+        
+        const base64String = canvas.toDataURL('image/jpeg', 0.7);
+        setNewBizImage(base64String);
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
   };
 
   const renderUserCards = () => {
@@ -692,22 +789,18 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
             )}
           </button>
           <button 
-            onClick={() => {
-              if (profile?.subscriptionActive && !profile?.isTenantDisabled) setActiveTab('branding');
-              else setActiveTab('subscription');
-            }}
-            className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'branding' ? 'bg-white text-blue-900 shadow-sm' : 'text-blue-300 hover:text-white'} ${(!profile?.subscriptionActive || profile?.isTenantDisabled) && activeTab !== 'branding' ? 'opacity-50' : ''}`}
-          >
-            {(!profile?.subscriptionActive || profile?.isTenantDisabled) && <Lock className="w-3 h-3 mr-1" />}
-            <Palette className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Branding</span>
-          </button>
-          <button 
             onClick={() => setActiveTab('subscription')}
             className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'subscription' ? 'bg-white text-blue-900 shadow-sm' : 'text-blue-300 hover:text-white'}`}
           >
             <CreditCard className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Sub Fee</span>
+          </button>
+          <button 
+            onClick={() => setActiveTab('businesses')}
+            className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'businesses' ? 'bg-white text-blue-900 shadow-sm' : 'text-blue-300 hover:text-white'}`}
+          >
+            <Building2 className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Businesses</span>
           </button>
         </div>
       </div>
@@ -1299,96 +1392,6 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
                 )}
               </motion.div>
             )}
-            {activeTab === 'branding' && (
-              <motion.div 
-                key="branding"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="space-y-6"
-              >
-                <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 space-y-8">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="text-sm font-black text-gray-900 uppercase tracking-widest">White-Label Branding</h3>
-                      <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Customize your application's appearance</p>
-                    </div>
-                    <button 
-                      onClick={startPreview}
-                      className="flex items-center space-x-2 bg-blue-50 text-blue-600 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-100 transition-all"
-                    >
-                      <Eye className="w-3.5 h-3.5" />
-                      <span>Preview (5s)</span>
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Font Family</label>
-                      <select 
-                        value={branding.fontFamily}
-                        onChange={(e) => setBranding({...branding, fontFamily: e.target.value})}
-                        className="w-full bg-gray-50 border-none rounded-xl py-4 px-4 text-sm font-bold text-gray-900 focus:ring-2 focus:ring-blue-100 appearance-none"
-                      >
-                        <option value="Inter">Inter (Sans)</option>
-                        <option value="Playfair Display">Playfair Display (Serif)</option>
-                        <option value="Space Grotesk">Space Grotesk (Modern)</option>
-                        <option value="JetBrains Mono">JetBrains Mono (Monospace)</option>
-                        <option value="Plus Jakarta Sans">Plus Jakarta Sans</option>
-                      </select>
-                    </div>
-
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Font Size</label>
-                      <div className="flex items-center space-x-4">
-                        <input 
-                          type="range"
-                          min="16"
-                          max="72"
-                          value={parseInt(branding.fontSize)}
-                          onChange={(e) => setBranding({...branding, fontSize: `${e.target.value}px`})}
-                          className="flex-1 accent-blue-600"
-                        />
-                        <span className="text-xs font-black text-gray-900 w-12 text-center">{branding.fontSize}</span>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Branding Color</label>
-                      <div className="flex items-center space-x-4">
-                        <input 
-                          type="color"
-                          value={branding.fontColor}
-                          onChange={(e) => setBranding({...branding, fontColor: e.target.value})}
-                          className="w-12 h-12 rounded-xl cursor-pointer border-none bg-transparent"
-                        />
-                        <input 
-                          type="text"
-                          value={branding.fontColor}
-                          onChange={(e) => setBranding({...branding, fontColor: e.target.value})}
-                          className="flex-1 bg-gray-50 border-none rounded-xl py-4 px-4 text-sm font-bold text-gray-900 focus:ring-2 focus:ring-blue-100"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <button 
-                    onClick={handleSaveBranding}
-                    disabled={savingBranding}
-                    className="w-full bg-blue-600 text-white py-5 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-blue-200 hover:bg-blue-700 transition-all disabled:opacity-50 flex items-center justify-center space-x-2"
-                  >
-                    {savingBranding ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <>
-                        <Check className="w-4 h-4" />
-                        <span>Save Changes</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </motion.div>
-            )}
             {activeTab === 'subscription' && (
               <motion.div 
                 key="subscription"
@@ -1525,6 +1528,145 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
                 </div>
               </motion.div>
             )}
+            {activeTab === 'businesses' && (
+              <motion.div 
+                key="businesses"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="space-y-6"
+              >
+                {/* Header & Direct Addition Trigger */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-gray-100 shadow-sm animate-in fade-in">
+                  <div>
+                    <h3 className="text-sm font-black text-gray-900 uppercase tracking-widest">Business Registrations</h3>
+                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Manage business documents, approvals, and onboarding</p>
+                  </div>
+                  <button
+                    onClick={() => setShowAddBusinessModal(true)}
+                    className="inline-flex items-center justify-center space-x-2 bg-blue-900 hover:bg-blue-800 text-white px-5 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-sm shrink-0"
+                  >
+                    <Building2 className="w-3.5 h-3.5" />
+                    <span>Add Business Directly</span>
+                  </button>
+                </div>
+
+                {/* Businesses Cards / Grid */}
+                {businesses.length === 0 ? (
+                  <div className="bg-white p-12 text-center rounded-3xl border border-gray-100 shadow-sm space-y-4">
+                    <div className="w-14 h-14 bg-indigo-50 rounded-2xl flex items-center justify-center mx-auto text-indigo-600">
+                      <Building2 className="w-7 h-7" />
+                    </div>
+                    <div className="max-w-md mx-auto space-y-1">
+                      <h4 className="text-xs font-black text-gray-900 uppercase tracking-wider">No Businesses Registered Yet</h4>
+                      <p className="text-[11px] text-gray-500 font-medium leading-relaxed">
+                        Referred members who upload company certificates or registration documents for your approval will appear here. You can also manually add businesses yourself using the button above.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {businesses.map((biz) => {
+                      const joinedDateStr = biz.createdAt ? new Date(biz.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recently';
+                      return (
+                        <div 
+                          key={biz.businessId}
+                          className="bg-white rounded-3xl p-5 border border-gray-100 shadow-sm hover:shadow-md transition-all flex flex-col justify-between space-y-4"
+                        >
+                          {/* Business Header */}
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-center space-x-3 min-w-0">
+                              <div className="w-12 h-12 rounded-2xl bg-indigo-50 flex items-center justify-center shrink-0 border border-indigo-100">
+                                <Building2 className="w-6 h-6 text-indigo-600" />
+                              </div>
+                              <div className="min-w-0">
+                                <h4 className="text-sm font-black text-gray-900 truncate leading-snug">
+                                  {biz.name}
+                                </h4>
+                                <div className="flex items-center space-x-2 text-[9px] font-bold text-gray-400 uppercase tracking-wider">
+                                  <span>Owner: {biz.ownerName || 'Self'}</span>
+                                  <span>•</span>
+                                  <span>Submitted {joinedDateStr}</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Status Badge */}
+                            <div className="shrink-0">
+                              <span className={`inline-flex items-center space-x-1 border px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                                biz.status === 'approved' ? 'bg-emerald-50 text-emerald-700 border-emerald-200/60' :
+                                biz.status === 'rejected' ? 'bg-red-50 text-red-600 border-red-200/60' :
+                                'bg-amber-50 text-amber-700 border-amber-200/60'
+                              }`}>
+                                {biz.status === 'approved' && <CheckCircle2 className="w-3 h-3 text-emerald-600" />}
+                                {biz.status === 'rejected' && <X className="w-3 h-3 text-red-500" />}
+                                {biz.status === 'pending' && <Clock className="w-3 h-3 text-amber-600" />}
+                                <span>{biz.status}</span>
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Info Box */}
+                          <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100 space-y-2 text-[11px]">
+                            {biz.email && (
+                              <div className="flex justify-between items-center">
+                                <span className="text-gray-500 font-bold uppercase text-[9px] tracking-wider">Contact Email</span>
+                                <span className="text-gray-900 font-mono font-bold">{biz.email}</span>
+                              </div>
+                            )}
+                            <div className="flex justify-between items-center">
+                              <span className="text-gray-500 font-bold uppercase text-[9px] tracking-wider">Document Name</span>
+                              <span className="text-indigo-900 font-black">{biz.documentName || 'Supporting Document'}</span>
+                            </div>
+                            {biz.description && (
+                              <div className="pt-2 border-t border-gray-200/60 text-[11px] text-gray-600 font-medium leading-relaxed">
+                                {biz.description}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Action Controls */}
+                          <div className="flex items-center gap-2 pt-1">
+                            {biz.proofImage ? (
+                              <button
+                                onClick={() => setSelectedBusiness(biz)}
+                                className="px-3 py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center space-x-1 transition-colors"
+                              >
+                                <FileText className="w-3.5 h-3.5" />
+                                <span>View Document</span>
+                              </button>
+                            ) : (
+                              <span className="text-[9px] font-black uppercase tracking-wider text-gray-400 bg-gray-100 px-2.5 py-1.5 rounded-lg">
+                                No Document Attachment
+                              </span>
+                            )}
+
+                            {biz.status === 'pending' && (
+                              <div className="flex-1 flex gap-2">
+                                <button
+                                  onClick={() => handleRejectBusiness(biz.businessId)}
+                                  className="flex-1 bg-red-50 hover:bg-red-100 text-red-600 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center space-x-1 transition-colors"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                  <span>Reject</span>
+                                </button>
+                                <button
+                                  onClick={() => handleApproveBusiness(biz.businessId)}
+                                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center space-x-1 transition-all shadow-sm shadow-emerald-100"
+                                >
+                                  <Check className="w-3.5 h-3.5" />
+                                  <span>Approve</span>
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </motion.div>
+            )}
           </AnimatePresence>
         </div>
       </div>
@@ -1545,12 +1687,7 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
               className="space-y-8"
             >
               <h2 
-                style={{ 
-                  fontFamily: branding.fontFamily,
-                  fontSize: branding.fontSize,
-                  color: branding.fontColor
-                }}
-                className="font-black leading-tight"
+                className="font-black leading-tight text-5xl"
               >
                 GiGs
               </h2>
@@ -1620,6 +1757,181 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
               </button>
             </div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Full Screen Business Document View Modal */}
+      <AnimatePresence>
+        {selectedBusiness && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[2100] bg-black/95 flex flex-col p-6"
+          >
+            <div className="flex items-center justify-between text-white mb-8">
+              <div className="flex items-center space-x-4">
+                <div className="w-12 h-12 rounded-2xl bg-indigo-900/60 flex items-center justify-center shrink-0 border border-white/20">
+                  <Building2 className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black uppercase tracking-tight">{selectedBusiness.name}</h3>
+                  <p className="text-[10px] text-white/50 font-black uppercase tracking-widest">{selectedBusiness.documentName || 'Supporting Document'}</p>
+                </div>
+              </div>
+              <button onClick={() => setSelectedBusiness(null)} className="p-2 hover:bg-white/10 rounded-full transition-colors">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            
+            <div className="flex-1 flex items-center justify-center">
+              {selectedBusiness.proofImage ? (
+                <img 
+                  src={selectedBusiness.proofImage} 
+                  alt="Full Document" 
+                  className="max-w-full max-h-full object-contain shadow-2xl rounded-xl"
+                />
+              ) : (
+                <div className="text-white text-center text-xs font-bold uppercase tracking-widest">
+                  No Document Attachment
+                </div>
+              )}
+            </div>
+
+            {selectedBusiness.status === 'pending' && (
+              <div className="grid grid-cols-2 gap-4 mt-8">
+                <button 
+                  onClick={() => handleApproveBusiness(selectedBusiness.businessId)}
+                  className="bg-emerald-600 text-white py-5 rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl shadow-emerald-950/40"
+                >
+                  Approve Registration
+                </button>
+                <button 
+                  onClick={() => handleRejectBusiness(selectedBusiness.businessId)}
+                  className="bg-white/10 text-white py-5 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-white/20 transition-colors"
+                >
+                  Reject Registration
+                </button>
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Add Business Directly Modal */}
+      <AnimatePresence>
+        {showAddBusinessModal && (
+          <div className="fixed inset-0 z-[2200] overflow-y-auto bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-3xl p-6 md:p-8 max-w-lg w-full shadow-2xl space-y-6"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2.5">
+                  <Building2 className="w-6 h-6 text-indigo-600" />
+                  <h3 className="text-sm font-black text-gray-900 uppercase tracking-widest">Add Business Directly</h3>
+                </div>
+                <button 
+                  type="button"
+                  onClick={() => {
+                    setShowAddBusinessModal(false);
+                    setNewBizImage(null);
+                  }} 
+                  className="p-1.5 hover:bg-gray-100 rounded-full transition-colors text-gray-400"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleAddBusinessDirectly} className="space-y-4 text-xs font-bold text-gray-700">
+                <div className="space-y-1.5">
+                  <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Business Name</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Acme Corporation"
+                    value={newBizName}
+                    onChange={(e) => setNewBizName(e.target.value)}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 font-bold"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Business Email</label>
+                  <input
+                    type="email"
+                    placeholder="info@acme.com"
+                    value={newBizEmail}
+                    onChange={(e) => setNewBizEmail(e.target.value)}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 font-bold"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Document Type</label>
+                  <select
+                    value={newBizDocName}
+                    onChange={(e) => setNewBizDocName(e.target.value)}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 font-bold"
+                  >
+                    <option value="CIPC Registration Certificate">CIPC Registration Certificate</option>
+                    <option value="Company Tax Certificate">Company Tax Certificate</option>
+                    <option value="ID Copies of Directors">ID Copies of Directors</option>
+                    <option value="Proof of Address">Proof of Address</option>
+                    <option value="Other Registration Document">Other Supporting Document</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Business Description</label>
+                  <textarea
+                    placeholder="Brief description of business services..."
+                    value={newBizDesc}
+                    onChange={(e) => setNewBizDesc(e.target.value)}
+                    rows={2}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 font-bold"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Upload Document Attachment (Optional)</label>
+                  <input
+                    type="file"
+                    id="biz-image-uploader"
+                    accept="image/*"
+                    onChange={handleBizImageUpload}
+                    className="hidden"
+                  />
+                  <label
+                    htmlFor="biz-image-uploader"
+                    className="flex items-center justify-center space-x-2 bg-gray-50 hover:bg-gray-100 border border-dashed border-gray-300 hover:border-gray-400 py-3 rounded-xl cursor-pointer transition-colors"
+                  >
+                    <Upload className="w-4 h-4 text-gray-400" />
+                    <span className="text-gray-500 font-bold uppercase tracking-widest text-[9px]">
+                      {newBizImage ? 'Change Document Image' : 'Select Document Image'}
+                    </span>
+                  </label>
+                  {newBizImage && (
+                    <div className="mt-2 text-[10px] text-emerald-600 font-bold text-center">
+                      ✓ Document file loaded successfully
+                    </div>
+                  )}
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    type="submit"
+                    disabled={addingBiz}
+                    className="w-full bg-blue-900 hover:bg-blue-800 text-white py-3.5 rounded-xl font-black uppercase tracking-widest shadow-sm disabled:opacity-50"
+                  >
+                    {addingBiz ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Save Business & Approve'}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>
