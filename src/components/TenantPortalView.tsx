@@ -4,10 +4,11 @@ import {
   Users, ShieldCheck, DollarSign, ArrowLeft, Check, X, FileText, Loader2, 
   TrendingUp, Search, Palette, Eye, CreditCard, Upload, Lock, Copy, CheckCircle2, 
   Share2, Link as LinkIcon, UserCheck, Calendar, Clock, AlertCircle, RefreshCw,
-  ExternalLink, UserX
+  ExternalLink, UserX, Building2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from './AuthProvider';
+import { calculateAdminFee } from '../lib/utils';
 
 interface Payment {
   paymentId: string;
@@ -59,6 +60,86 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
   const [copiedLink, setCopiedLink] = useState(false);
   const [approvingUserId, setApprovingUserId] = useState<string | null>(null);
 
+  const activeReferrals = tenantUsers.filter(u => u.userSubscriptionActive).length;
+  const adminSubscriptionFee = calculateAdminFee(activeReferrals);
+
+  // Tenant's own monthly subscription fee configuration
+  const tenantFee = profile?.monthlySubscriptionFee !== undefined ? Number(profile.monthlySubscriptionFee) : 99.00;
+  const [customFeeInput, setCustomFeeInput] = useState<string>('99.00');
+  const [savingFee, setSavingFee] = useState(false);
+  const [feeSavedToast, setFeeSavedToast] = useState<string | null>(null);
+
+  // Bank Details State
+  const [bankDetails, setBankDetails] = useState({
+    bankName: '',
+    accountHolder: '',
+    accountNumber: '',
+    accountType: 'Savings',
+    branchCode: ''
+  });
+  const [savingBankDetails, setSavingBankDetails] = useState(false);
+
+  useEffect(() => {
+    if (profile?.monthlySubscriptionFee !== undefined) {
+      setCustomFeeInput(String(profile.monthlySubscriptionFee));
+    }
+    if (profile?.bankDetails) {
+      setBankDetails(profile.bankDetails);
+    }
+  }, [profile?.monthlySubscriptionFee, profile?.bankDetails]);
+
+  const handleSaveBankDetails = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    if (profile?.isTenantDisabled) {
+      setLastError("Action blocked: Your tenant account is disabled.");
+      return;
+    }
+    setSavingBankDetails(true);
+    try {
+      await updateDoc(doc(db, 'users', user.uid), {
+        bankDetails,
+        updatedAt: new Date().toISOString()
+      });
+      setFeeSavedToast("Bank details successfully updated.");
+      setTimeout(() => setFeeSavedToast(null), 3000);
+    } catch (err: any) {
+      console.error("Error saving bank details", err);
+      setLastError(`Failed to update bank details: ${err.message}`);
+    } finally {
+      setSavingBankDetails(false);
+    }
+  };
+
+  const handleSaveMonthlyFee = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!user) return;
+    if (profile?.isTenantDisabled) {
+      setLastError("Cannot update fee: Your tenant account has been disabled by platform administration.");
+      return;
+    }
+    const parsed = parseFloat(customFeeInput);
+    if (isNaN(parsed) || parsed <= 0) {
+      setLastError("Please enter a valid monthly subscription fee (greater than R 0.00).");
+      return;
+    }
+    setSavingFee(true);
+    try {
+      const feeToSave = Math.round(parsed * 100) / 100;
+      await updateDoc(doc(db, 'users', user.uid), {
+        monthlySubscriptionFee: feeToSave,
+        updatedAt: new Date().toISOString()
+      });
+      setFeeSavedToast(`Monthly fee successfully updated to R ${feeToSave.toFixed(2)} / month. All your referred users will pay this amount.`);
+      setTimeout(() => setFeeSavedToast(null), 4000);
+    } catch (err: any) {
+      console.error("Error saving monthly fee", err);
+      setLastError(`Failed to update subscription fee: ${err.message}`);
+    } finally {
+      setSavingFee(false);
+    }
+  };
+
   // Branding state
   const [branding, setBranding] = useState({
     appName: '',
@@ -80,6 +161,8 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
           setBranding(data.branding);
         }
       }
+    }, (err) => {
+      console.warn("Could not load profile in tenant portal", err);
     });
 
     // Query payments associated with this tenant
@@ -90,6 +173,9 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
         ...doc.data()
       })) as Payment[];
       setPayments(paymentsList);
+      setLoading(false);
+    }, (err) => {
+      console.warn("Could not load payments in tenant portal", err);
       setLoading(false);
     });
 
@@ -148,7 +234,7 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
             tenantId: user.uid,
             tenantName: profile.displayName,
             proofImage: base64String,
-            amount: 299.99,
+            amount: adminSubscriptionFee,
             status: 'pending',
             createdAt: new Date().toISOString()
           });
@@ -300,6 +386,10 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
     : '';
 
   const handleCopyLink = () => {
+    if (profile?.isTenantDisabled) {
+      setLastError("Tenant link unavailable: Your tenant account has been disabled by platform administration.");
+      return;
+    }
     if (!tenantInviteLink) return;
     navigator.clipboard.writeText(tenantInviteLink).then(() => {
       setCopiedLink(true);
@@ -310,11 +400,15 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
   };
 
   const handleShareLink = () => {
+    if (profile?.isTenantDisabled) {
+      setLastError("Tenant link unavailable: Your tenant account has been disabled by platform administration.");
+      return;
+    }
     if (!tenantInviteLink) return;
     if (navigator.share) {
       navigator.share({
         title: `${profile?.displayName || 'Tenant'} - TimeGig Portal`,
-        text: `Join my network on TimeGig! Sign up through my link to access exclusive opportunities:`,
+        text: `Join my network on TimeGig! Monthly subscription fee is R ${tenantFee.toFixed(2)}/month. Sign up here:`,
         url: tenantInviteLink
       }).catch(() => {});
     } else {
@@ -324,6 +418,10 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
 
   const handleApproveUser = async (targetUserId: string) => {
     if (!user) return;
+    if (profile?.isTenantDisabled) {
+      setLastError("Action blocked: Your tenant account has been disabled by platform administration.");
+      return;
+    }
     setApprovingUserId(targetUserId);
     try {
       const expiresAt = new Date();
@@ -358,6 +456,10 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
 
   const handleToggleUserStatus = async (targetUserId: string, currentActive: boolean) => {
     if (!user) return;
+    if (profile?.isTenantDisabled) {
+      setLastError("Action blocked: Your tenant account has been disabled by platform administration.");
+      return;
+    }
     setApprovingUserId(targetUserId);
     try {
       await updateDoc(doc(db, 'users', targetUserId), {
@@ -457,8 +559,14 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
               {/* Monthly Subscription Details Box */}
               <div className="bg-gray-50 rounded-2xl p-3.5 border border-gray-100 space-y-2 text-[11px]">
                 <div className="flex items-center justify-between font-medium">
-                  <span className="text-gray-500 font-bold uppercase text-[9px] tracking-wider">Monthly Subscription</span>
-                  <span className="text-gray-900 font-black">R 99.00 / month</span>
+                  <span className="text-gray-500 font-bold uppercase text-[9px] tracking-wider">Member Subscription Fee</span>
+                  <span className="text-gray-900 font-black">R {tenantFee.toFixed(2)} / month</span>
+                </div>
+                <div className="flex items-center justify-between font-medium">
+                  <span className="text-gray-500 font-bold uppercase text-[9px] tracking-wider">Approval Authority</span>
+                  <span className="text-[10px] font-black text-blue-900 bg-blue-50 px-2 py-0.5 rounded">
+                    Tenant (You)
+                  </span>
                 </div>
                 <div className="flex items-center justify-between font-medium">
                   <span className="text-gray-500 font-bold uppercase text-[9px] tracking-wider">Account Status</span>
@@ -468,7 +576,7 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
                 </div>
                 {u.latestPayment && (
                   <div className="pt-2 border-t border-gray-200/60 flex items-center justify-between text-[10px]">
-                    <span className="text-gray-500">Latest PoP: R {u.latestPayment.amount?.toFixed(2) || '99.00'}</span>
+                    <span className="text-gray-500">Latest PoP: R {u.latestPayment.amount?.toFixed(2) || tenantFee.toFixed(2)}</span>
                     <span className={`font-black uppercase tracking-wider ${
                       u.latestPayment.status === 'approved' ? 'text-emerald-600' : 
                       u.latestPayment.status === 'rejected' ? 'text-red-500' : 'text-amber-600'
@@ -547,23 +655,23 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
         <div className="flex items-center space-x-1 bg-white/5 p-1 rounded-xl">
           <button 
             onClick={() => {
-              if (profile?.subscriptionActive) setActiveTab('overview');
+              if (profile?.subscriptionActive && !profile?.isTenantDisabled) setActiveTab('overview');
               else setActiveTab('subscription');
             }}
-            className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'overview' ? 'bg-white text-blue-900 shadow-sm' : 'text-blue-300 hover:text-white'} ${!profile?.subscriptionActive && activeTab !== 'overview' ? 'opacity-50' : ''}`}
+            className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'overview' ? 'bg-white text-blue-900 shadow-sm' : 'text-blue-300 hover:text-white'} ${(!profile?.subscriptionActive || profile?.isTenantDisabled) && activeTab !== 'overview' ? 'opacity-50' : ''}`}
           >
-            {!profile?.subscriptionActive && <Lock className="w-3 h-3 mr-1" />}
+            {(!profile?.subscriptionActive || profile?.isTenantDisabled) && <Lock className="w-3 h-3 mr-1" />}
             <TrendingUp className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Overview</span>
           </button>
           <button 
             onClick={() => {
-              if (profile?.subscriptionActive) setActiveTab('users');
+              if (profile?.subscriptionActive && !profile?.isTenantDisabled) setActiveTab('users');
               else setActiveTab('subscription');
             }}
-            className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'users' ? 'bg-white text-blue-900 shadow-sm' : 'text-blue-300 hover:text-white'} ${!profile?.subscriptionActive && activeTab !== 'users' ? 'opacity-50' : ''}`}
+            className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'users' ? 'bg-white text-blue-900 shadow-sm' : 'text-blue-300 hover:text-white'} ${(!profile?.subscriptionActive || profile?.isTenantDisabled) && activeTab !== 'users' ? 'opacity-50' : ''}`}
           >
-            {!profile?.subscriptionActive && <Lock className="w-3 h-3 mr-1" />}
+            {(!profile?.subscriptionActive || profile?.isTenantDisabled) && <Lock className="w-3 h-3 mr-1" />}
             <Users className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Users</span>
             {activeApprovedUsers.length > 0 && (
@@ -572,12 +680,12 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
           </button>
           <button 
             onClick={() => {
-              if (profile?.subscriptionActive) setActiveTab('pop');
+              if (profile?.subscriptionActive && !profile?.isTenantDisabled) setActiveTab('pop');
               else setActiveTab('subscription');
             }}
-            className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'pop' ? 'bg-white text-blue-900 shadow-sm' : 'text-blue-300 hover:text-white'} ${!profile?.subscriptionActive && activeTab !== 'pop' ? 'opacity-50' : ''}`}
+            className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'pop' ? 'bg-white text-blue-900 shadow-sm' : 'text-blue-300 hover:text-white'} ${(!profile?.subscriptionActive || profile?.isTenantDisabled) && activeTab !== 'pop' ? 'opacity-50' : ''}`}
           >
-            {!profile?.subscriptionActive && <Lock className="w-3 h-3 mr-1" />}
+            {(!profile?.subscriptionActive || profile?.isTenantDisabled) && <Lock className="w-3 h-3 mr-1" />}
             <DollarSign className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">PoP</span>
             {pendingPayments.length > 0 && (
@@ -586,12 +694,12 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
           </button>
           <button 
             onClick={() => {
-              if (profile?.subscriptionActive) setActiveTab('branding');
+              if (profile?.subscriptionActive && !profile?.isTenantDisabled) setActiveTab('branding');
               else setActiveTab('subscription');
             }}
-            className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'branding' ? 'bg-white text-blue-900 shadow-sm' : 'text-blue-300 hover:text-white'} ${!profile?.subscriptionActive && activeTab !== 'branding' ? 'opacity-50' : ''}`}
+            className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'branding' ? 'bg-white text-blue-900 shadow-sm' : 'text-blue-300 hover:text-white'} ${(!profile?.subscriptionActive || profile?.isTenantDisabled) && activeTab !== 'branding' ? 'opacity-50' : ''}`}
           >
-            {!profile?.subscriptionActive && <Lock className="w-3 h-3 mr-1" />}
+            {(!profile?.subscriptionActive || profile?.isTenantDisabled) && <Lock className="w-3 h-3 mr-1" />}
             <Palette className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Branding</span>
           </button>
@@ -608,6 +716,25 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
       {/* Content Area */}
       <div className="flex-1 overflow-y-auto bg-gray-50">
         <div className="max-w-4xl mx-auto p-6">
+          {feeSavedToast && (
+            <div className="mb-6 bg-emerald-600 text-white py-3.5 px-5 rounded-2xl flex items-center space-x-3 text-xs font-bold shadow-lg animate-in fade-in">
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              <span>{feeSavedToast}</span>
+            </div>
+          )}
+
+          {profile?.isTenantDisabled && (
+            <div className="mb-6 bg-red-600 text-white rounded-3xl p-6 shadow-xl space-y-2 border-2 border-red-500 animate-in fade-in">
+              <div className="flex items-center space-x-2.5">
+                <AlertCircle className="w-5 h-5 text-white shrink-0" />
+                <h3 className="text-xs font-black uppercase tracking-widest">Tenant Account Disabled by Admin</h3>
+              </div>
+              <p className="text-[11px] text-red-100 font-medium leading-relaxed">
+                Your tenant account has been disabled immediately by platform administration. Your referral link onboarding, user approval actions, and portal features are currently suspended. Please contact platform administration at <span className="font-bold underline text-white">timegig2026@gmail.com</span>.
+              </p>
+            </div>
+          )}
+
           {lastError && (
             <div className="mb-6 bg-red-50 border-2 border-red-100 rounded-3xl p-6 space-y-3">
               <div className="flex items-center justify-between">
@@ -638,8 +765,8 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
                 exit={{ opacity: 0, y: -10 }}
                 className="space-y-6"
               >
-                {/* 3 Metric Cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {/* 4 Metric Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100">
                     <DollarSign className="w-5 h-5 text-green-600 mb-2" />
                     <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Total Earnings</p>
@@ -670,6 +797,157 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
                     <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Pending PoP Approvals</p>
                     <p className="text-2xl font-black text-gray-900">{pendingPayments.length}</p>
                   </div>
+
+                  <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100">
+                    <CreditCard className="w-5 h-5 text-indigo-600 mb-2" />
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Your Member Fee</p>
+                    <p className="text-2xl font-black text-gray-900">R {tenantFee.toFixed(2)} <span className="text-xs text-gray-400 font-bold">/mo</span></p>
+                  </div>
+                </div>
+
+                {/* Tenant Custom Monthly Subscription Fee Settings */}
+                <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <div className="flex items-center space-x-2">
+                        <DollarSign className="w-4 h-4 text-emerald-600" />
+                        <h3 className="text-xs font-black text-gray-900 uppercase tracking-widest">
+                          Set Your Monthly Member Subscription Fee
+                        </h3>
+                      </div>
+                      <p className="text-[11px] text-gray-500 mt-1">
+                        Tenants configure their own monthly fee. All users who register through your link will pay this subscription amount directly to you.
+                      </p>
+                    </div>
+
+                    <div className="bg-emerald-50 text-emerald-800 px-3.5 py-1.5 rounded-xl text-xs font-black border border-emerald-200/60 self-start sm:self-auto shrink-0">
+                      Current: R {tenantFee.toFixed(2)} / month
+                    </div>
+                  </div>
+
+                  <form onSubmit={handleSaveMonthlyFee} className="flex flex-col sm:flex-row items-center gap-3 pt-1">
+                    <div className="relative flex-1 w-full">
+                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-black text-gray-400">R</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="1"
+                        max="50000"
+                        value={customFeeInput}
+                        onChange={(e) => setCustomFeeInput(e.target.value)}
+                        disabled={savingFee || profile?.isTenantDisabled}
+                        placeholder="e.g. 99.00, 149.00, 250.00"
+                        className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-8 pr-4 py-2.5 text-xs font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={savingFee || profile?.isTenantDisabled}
+                      className="w-full sm:w-auto bg-blue-900 hover:bg-blue-800 text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-50 flex items-center justify-center space-x-2 shrink-0 shadow-sm"
+                    >
+                      {savingFee ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <span>Save Subscription Fee</span>
+                      )}
+                    </button>
+                  </form>
+                </div>
+
+                {/* Tenant Banking Details Settings */}
+                <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 space-y-4">
+                  <div>
+                    <div className="flex items-center space-x-2">
+                      <Building2 className="w-4 h-4 text-blue-600" />
+                      <h3 className="text-xs font-black text-gray-900 uppercase tracking-widest">
+                        Your Banking Details for Member Payments
+                      </h3>
+                    </div>
+                    <p className="text-[11px] text-gray-500 mt-1">
+                      Enter the bank account where you want your referred members to pay their monthly fees.
+                    </p>
+                  </div>
+
+                  <form onSubmit={handleSaveBankDetails} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Bank Name</label>
+                      <input
+                        type="text"
+                        value={bankDetails.bankName}
+                        onChange={(e) => setBankDetails({ ...bankDetails, bankName: e.target.value })}
+                        disabled={savingBankDetails || profile?.isTenantDisabled}
+                        placeholder="e.g. Capitec, FNB, Standard Bank"
+                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Account Holder</label>
+                      <input
+                        type="text"
+                        value={bankDetails.accountHolder}
+                        onChange={(e) => setBankDetails({ ...bankDetails, accountHolder: e.target.value })}
+                        disabled={savingBankDetails || profile?.isTenantDisabled}
+                        placeholder="Full Name / Business Name"
+                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Account Number</label>
+                      <input
+                        type="text"
+                        value={bankDetails.accountNumber}
+                        onChange={(e) => setBankDetails({ ...bankDetails, accountNumber: e.target.value })}
+                        disabled={savingBankDetails || profile?.isTenantDisabled}
+                        placeholder="Bank Account Number"
+                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Account Type</label>
+                      <select
+                        value={bankDetails.accountType}
+                        onChange={(e) => setBankDetails({ ...bankDetails, accountType: e.target.value })}
+                        disabled={savingBankDetails || profile?.isTenantDisabled}
+                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="Savings">Savings</option>
+                        <option value="Cheque">Cheque</option>
+                        <option value="Current">Current</option>
+                        <option value="Business">Business</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Branch Code (Optional)</label>
+                      <input
+                        type="text"
+                        value={bankDetails.branchCode}
+                        onChange={(e) => setBankDetails({ ...bankDetails, branchCode: e.target.value })}
+                        disabled={savingBankDetails || profile?.isTenantDisabled}
+                        placeholder="e.g. 470010"
+                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div className="md:col-span-2 pt-2">
+                      <button
+                        type="submit"
+                        disabled={savingBankDetails || profile?.isTenantDisabled}
+                        className="w-full bg-blue-900 hover:bg-blue-800 text-white py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-50 flex items-center justify-center space-x-2 shadow-sm"
+                      >
+                        {savingBankDetails ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <>
+                            <Check className="w-3.5 h-3.5" />
+                            <span>Save Bank Details</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </form>
                 </div>
 
                 {/* Tenant Referral / Join Link Card */}
@@ -722,13 +1000,16 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
                 </div>
 
                 {/* Monthly Subscription Policy Notice */}
-                <div className="bg-amber-50/90 border border-amber-200 rounded-3xl p-5 space-y-2">
+                <div className="bg-amber-50/90 border border-amber-200 rounded-3xl p-5 space-y-2.5">
                   <div className="flex items-center space-x-2 text-amber-900">
                     <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-                    <h4 className="text-xs font-black uppercase tracking-wider">Monthly Subscription Requirement Policy</h4>
+                    <h4 className="text-xs font-black uppercase tracking-wider">Tenant Approval & Member Subscription Policy</h4>
                   </div>
-                  <p className="text-[11px] text-amber-800 leading-relaxed font-medium">
-                    Users who join through your tenant link are required to pay you a monthly subscription (R99,00/month) to keep their account active. As tenant administrator, you verify their subscription payment and approve or pause their account access.
+                  <p className="text-[11px] text-amber-900 leading-relaxed font-medium">
+                    Users who join through your tenant link are required to pay your monthly subscription fee of <span className="font-black text-amber-950">R {tenantFee.toFixed(2)} / month</span> to keep their account active.
+                  </p>
+                  <p className="text-[11px] text-amber-800 leading-relaxed font-medium border-t border-amber-200/60 pt-2">
+                    <strong className="text-amber-950 uppercase tracking-wider text-[10px]">Tenant Sole Approval Authority:</strong> You approve your own users who joined through your link, not platform admin. Review PoP submissions in the PoP tab or directly in the Users directory to activate or pause member access.
                   </p>
                 </div>
 
@@ -879,12 +1160,20 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
 
                 {/* Monthly Subscription Policy Notice */}
                 <div className="bg-amber-50/90 border border-amber-200 rounded-3xl p-5 space-y-2">
-                  <div className="flex items-center space-x-2 text-amber-900">
-                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-                    <h4 className="text-xs font-black uppercase tracking-wider">Subscription Policy Reminder</h4>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2 text-amber-900">
+                      <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                      <h4 className="text-xs font-black uppercase tracking-wider">Tenant Approval & Member Subscription Policy</h4>
+                    </div>
+                    <span className="text-[10px] font-black bg-amber-200/60 text-amber-950 px-2.5 py-1 rounded-full uppercase tracking-wider">
+                      Fee: R {tenantFee.toFixed(2)}/mo
+                    </span>
                   </div>
-                  <p className="text-[11px] text-amber-800 leading-relaxed font-medium">
-                    Users who joined through your tenant link must pay you a monthly subscription to keep their account active. Active approved users have full access to services. If a user has not paid their monthly subscription fee, click Pause Access or request payment.
+                  <p className="text-[11px] text-amber-900 leading-relaxed font-medium">
+                    Users who joined through your link must pay your monthly subscription fee of <span className="font-bold">R {tenantFee.toFixed(2)} / month</span>.
+                  </p>
+                  <p className="text-[11px] text-amber-800 leading-relaxed font-medium border-t border-amber-200/60 pt-2">
+                    <strong className="text-amber-950 uppercase tracking-wider text-[10px]">Tenant Sole Approval Authority:</strong> Tenant must approve his own users who joined through his link, not admin. When a user submits Proof of Payment, click "Approve User & Activate" below to grant full service access.
                   </p>
                 </div>
 
@@ -1187,8 +1476,13 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
                     <div className="space-y-6">
                       <div className="bg-gray-50 p-6 rounded-2xl border border-gray-100 space-y-4">
                         <div className="flex justify-between items-center">
-                          <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Monthly Fee</span>
-                          <span className="text-lg font-black text-gray-900">R 299,99</span>
+                          <div className="space-y-0.5">
+                            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Monthly Fee</span>
+                            <p className="text-[9px] text-blue-600 font-bold uppercase tracking-tighter">
+                              Based on {activeReferrals} active referrals
+                            </p>
+                          </div>
+                          <span className="text-lg font-black text-gray-900">R {adminSubscriptionFee.toFixed(2)}</span>
                         </div>
                         <div className="h-px bg-gray-200" />
                         <p className="text-[10px] font-bold text-gray-500 leading-relaxed uppercase tracking-wider">

@@ -1,6 +1,6 @@
 import { useAuth } from './AuthProvider';
 import { auth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, updateProfile, db, doc, updateDoc, setDoc, collection, query, where, onSnapshot, handleFirestoreError, OperationType } from '../lib/firebase';
-import { User as UserIcon, LogOut, LogIn, Share2, Check, Mail, Lock, UserPlus, Camera, Loader2, Edit3, MapPin, ShieldCheck, TrendingUp, CreditCard, Upload, CheckCircle2, Clock, AlertCircle } from 'lucide-react';
+import { User as UserIcon, LogOut, LogIn, Share2, Check, Mail, Lock, UserPlus, Camera, Loader2, Edit3, MapPin, ShieldCheck, TrendingUp, CreditCard, Upload, CheckCircle2, Clock, AlertCircle, Building2 } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { motion } from 'motion/react';
 import ProfileEdit from './ProfileEdit';
@@ -43,6 +43,35 @@ export default function ProfileView() {
   const [uploadingTenantPop, setUploadingTenantPop] = useState(false);
   const [tenantPopSuccess, setTenantPopSuccess] = useState(false);
   const tenantPopInputRef = useRef<HTMLInputElement>(null);
+  const [hostTenant, setHostTenant] = useState<{ 
+    displayName?: string; 
+    monthlySubscriptionFee?: number; 
+    isTenantDisabled?: boolean;
+    bankDetails?: {
+      bankName: string;
+      accountHolder: string;
+      accountNumber: string;
+      accountType: string;
+      branchCode?: string;
+    }
+  } | null>(null);
+
+  useEffect(() => {
+    if (!profile?.tenantId) {
+      setHostTenant(null);
+      return;
+    }
+    const unsubHost = onSnapshot(doc(db, 'users', profile.tenantId), (docSnap) => {
+      if (docSnap.exists()) {
+        setHostTenant(docSnap.data() as any);
+      }
+    }, (err) => {
+      console.warn("Could not load host tenant profile", err);
+    });
+    return () => unsubHost();
+  }, [profile?.tenantId]);
+
+  const hostTenantFee = hostTenant?.monthlySubscriptionFee !== undefined ? Number(hostTenant.monthlySubscriptionFee) : 99.00;
 
   useEffect(() => {
     if (!user || !profile?.tenantId) return;
@@ -100,7 +129,7 @@ export default function ProfileView() {
             userDisplayName: profile.displayName || user.displayName || 'Member',
             userPhotoURL: profile.photoURL || '',
             proofImage: base64String,
-            amount: 99.00,
+            amount: hostTenantFee,
             status: 'pending',
             createdAt: new Date().toISOString()
           });
@@ -518,8 +547,11 @@ export default function ProfileView() {
           </div>
           <div className="flex justify-between items-center">
             <span className="text-xs font-black text-gray-400 uppercase tracking-widest">Status</span>
-            <span className="text-[10px] font-black bg-green-100 text-green-700 px-2 py-1 rounded-md uppercase tracking-wider">
-              {profile?.isTenantApproved ? 'Verified Tenant' : 'Active'}
+            <span className={`text-[10px] font-black px-2 py-1 rounded-md uppercase tracking-wider ${
+              profile?.isTenantDisabled ? 'bg-red-100 text-red-700' :
+              profile?.isTenantApproved ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
+            }`}>
+              {profile?.isTenantDisabled ? 'Disabled by Admin' : profile?.isTenantApproved ? 'Verified Tenant' : 'Active'}
             </span>
           </div>
 
@@ -531,20 +563,44 @@ export default function ProfileView() {
                 <span className="text-xs font-black text-gray-900 uppercase tracking-widest">Tenant Program</span>
               </div>
               <div className={`px-2 py-1 rounded text-[8px] font-black uppercase tracking-widest ${
+                profile?.isTenantDisabled ? 'bg-red-100 text-red-600' :
                 profile?.isTenantApproved ? 'bg-green-100 text-green-600' : 
                 profile?.isTenantRequest ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-400'
               }`}>
-                {profile?.isTenantApproved ? 'Approved' : profile?.isTenantRequest ? 'Pending' : 'Off'}
+                {profile?.isTenantDisabled ? 'Disabled by Admin' : profile?.isTenantApproved ? 'Approved' : profile?.isTenantRequest ? 'Pending' : 'Off'}
               </div>
             </div>
             
             <p className="text-[10px] text-gray-500 font-medium leading-relaxed italic">
-              {profile?.isTenantApproved 
+              {profile?.isTenantDisabled
+                ? 'Your tenant account is disabled by administration. Features and earnings are paused.'
+                : profile?.isTenantApproved 
                 ? 'Your tenant account is active. Access your portal to manage services and payments.' 
                 : 'Earn passive income by hosting services. Enable this in your profile settings and resubmit for approval.'}
             </p>
 
-            {profile?.isTenantApproved && !profile?.subscriptionActive && (
+            {profile?.isTenantDisabled && (
+              <div className="p-4 bg-red-50 border-2 border-red-200 rounded-2xl space-y-3 text-xs">
+                <div className="flex items-center space-x-2 text-red-700 font-black">
+                  <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+                  <span className="uppercase tracking-widest text-[10px]">Tenant Account Disabled</span>
+                </div>
+                <p className="text-[11px] text-red-700 leading-relaxed font-medium">
+                  Your tenant account has been disabled immediately. Features and referral link onboarding are currently paused. Please pay your Admin Subscription fee to restore access.
+                </p>
+                <button
+                  onClick={() => {
+                    setTenantPortalTab('subscription');
+                    setShowTenantPortal(true);
+                  }}
+                  className="w-full bg-red-600 text-white py-3 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-red-200"
+                >
+                  Go to Payment Feature
+                </button>
+              </div>
+            )}
+
+            {profile?.isTenantApproved && !profile?.subscriptionActive && !profile?.isTenantDisabled && (
               <motion.div 
                 initial={{ scale: 0.95, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
@@ -571,27 +627,40 @@ export default function ProfileView() {
 
             <button
               onClick={() => {
-                if (profile?.isTenantApproved) {
+                if (profile?.isTenantApproved && !profile?.isTenantDisabled) {
                   setTenantPortalTab('overview');
                   setShowTenantPortal(true);
                 }
               }}
-              disabled={!profile?.isTenantApproved}
+              disabled={!profile?.isTenantApproved || profile?.isTenantDisabled}
               className={`w-full py-4 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center justify-center space-x-2 border shadow-sm ${
-                profile?.isTenantApproved 
+                profile?.isTenantDisabled
+                  ? 'bg-red-50 text-red-500 border-red-200 cursor-not-allowed'
+                  : profile?.isTenantApproved 
                   ? 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700 active:scale-95' 
                   : 'bg-gray-50 text-gray-400 border-gray-100 cursor-not-allowed opacity-60'
               }`}
             >
-              {!profile?.isTenantApproved && <Lock className="w-3 h-3" />}
-              <span>{profile?.isTenantApproved ? 'Open Tenant Portal' : 'Tenant Portal Locked'}</span>
+              {profile?.isTenantDisabled ? (
+                <>
+                  <Lock className="w-3 h-3" />
+                  <span>Tenant Disabled by Admin</span>
+                </>
+              ) : !profile?.isTenantApproved ? (
+                <>
+                  <Lock className="w-3 h-3" />
+                  <span>Tenant Portal Locked</span>
+                </>
+              ) : (
+                <span>Open Tenant Portal</span>
+              )}
             </button>
 
             {profile?.isTenantApproved && (
               <div className="bg-white p-3 rounded-xl border border-blue-100 flex items-center justify-between">
                 <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Tenant Earnings</span>
                 <span className="text-xs font-black text-gray-900">
-                  {profile?.subscriptionActive ? 'R 0.00' : 'Earnings Disabled'}
+                  {profile?.isTenantDisabled ? 'Account Suspended' : profile?.subscriptionActive ? 'R 0.00' : 'Earnings Disabled'}
                 </span>
               </div>
             )}
@@ -633,24 +702,80 @@ export default function ProfileView() {
           <div className="bg-blue-50/60 rounded-xl p-4 space-y-2 border border-blue-100/60 text-xs">
             <div className="flex justify-between items-center">
               <span className="text-gray-500 font-bold uppercase text-[9px] tracking-wider">Monthly Subscription</span>
-              <span className="text-gray-900 font-black">R 99.00 / month</span>
+              <span className="text-gray-900 font-black">R {hostTenantFee.toFixed(2)} / month</span>
             </div>
             <div className="flex justify-between items-center">
               <span className="text-gray-500 font-bold uppercase text-[9px] tracking-wider">Tenant Host</span>
               <span className="font-mono text-[10px] text-blue-900 font-bold truncate max-w-[180px]">
-                {profile.tenantId}
+                {hostTenant?.displayName || profile.tenantId}
+              </span>
+            </div>
+            <div className="flex justify-between items-center pt-1 border-t border-blue-100/50">
+              <span className="text-gray-500 font-bold uppercase text-[9px] tracking-wider">Approval Authority</span>
+              <span className="text-blue-900 font-black text-[10px] uppercase">
+                Tenant (Direct Approval)
               </span>
             </div>
           </div>
 
+          {hostTenant?.isTenantDisabled && (
+            <div className="p-3.5 bg-red-50 text-red-700 text-xs rounded-xl border border-red-200 flex items-center space-x-2">
+              <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+              <span>Your host tenant account is currently paused by platform administration.</span>
+            </div>
+          )}
+
           <p className="text-[10px] text-gray-500 font-medium leading-relaxed">
-            As a user who joined through a tenant link, you must pay your tenant a monthly subscription to keep your account active. Upload your Proof of Payment (PoP) below so your tenant can approve and maintain your active access.
+            As a user who joined through your tenant's link, your monthly subscription of <strong className="text-gray-800">R {hostTenantFee.toFixed(2)}</strong> is paid directly to your host tenant. <span className="font-bold text-gray-800">Your host tenant approves your account directly</span> upon verifying your Proof of Payment.
           </p>
+
+          {hostTenant?.bankDetails && (
+            <div className="bg-gray-900 text-white rounded-2xl p-5 space-y-4 shadow-xl border border-white/10 relative overflow-hidden group">
+              <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:scale-110 transition-transform">
+                <Building2 className="w-12 h-12" />
+              </div>
+              <div className="relative z-10 space-y-3">
+                <div className="flex items-center space-x-2">
+                  <div className="w-1.5 h-4 bg-blue-500 rounded-full" />
+                  <h4 className="text-[10px] font-black uppercase tracking-widest text-blue-400">Host Banking Details</h4>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-y-3 gap-x-4">
+                  <div className="space-y-0.5">
+                    <p className="text-[7px] font-black text-white/40 uppercase tracking-widest">Bank Name</p>
+                    <p className="text-[11px] font-black text-white uppercase tracking-tight">{hostTenant.bankDetails.bankName}</p>
+                  </div>
+                  <div className="space-y-0.5">
+                    <p className="text-[7px] font-black text-white/40 uppercase tracking-widest">Account Holder</p>
+                    <p className="text-[11px] font-black text-white uppercase tracking-tight truncate">{hostTenant.bankDetails.accountHolder}</p>
+                  </div>
+                  <div className="space-y-0.5">
+                    <p className="text-[7px] font-black text-white/40 uppercase tracking-widest">Account Number</p>
+                    <p className="text-[11px] font-mono font-black text-blue-300 tracking-wider">{hostTenant.bankDetails.accountNumber}</p>
+                  </div>
+                  <div className="space-y-0.5">
+                    <p className="text-[7px] font-black text-white/40 uppercase tracking-widest">Account Type</p>
+                    <p className="text-[11px] font-black text-white uppercase tracking-tight">{hostTenant.bankDetails.accountType}</p>
+                  </div>
+                  {hostTenant.bankDetails.branchCode && (
+                    <div className="space-y-0.5">
+                      <p className="text-[7px] font-black text-white/40 uppercase tracking-widest">Branch Code</p>
+                      <p className="text-[11px] font-black text-white uppercase tracking-tight">{hostTenant.bankDetails.branchCode}</p>
+                    </div>
+                  )}
+                  <div className="space-y-0.5">
+                    <p className="text-[7px] font-black text-white/40 uppercase tracking-widest">Reference</p>
+                    <p className="text-[11px] font-black text-emerald-400 uppercase tracking-tight">Your Full Name</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {tenantPopSuccess && (
             <div className="p-3 bg-emerald-50 text-emerald-700 text-xs font-bold rounded-xl border border-emerald-200 flex items-center space-x-2 animate-in fade-in">
               <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-              <span>Proof of Payment sent to your tenant! Awaiting approval.</span>
+              <span>Proof of Payment sent to your tenant! Awaiting tenant approval.</span>
             </div>
           )}
 
@@ -659,12 +784,12 @@ export default function ProfileView() {
               <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Recent Payment Status</p>
               {tenantPayments.slice(0, 2).map((p: any) => (
                 <div key={p.paymentId} className="flex items-center justify-between bg-gray-50 p-2.5 rounded-xl text-xs">
-                  <span className="font-bold text-gray-700">R {p.amount?.toFixed(2) || '99.00'}</span>
+                  <span className="font-bold text-gray-700">R {p.amount?.toFixed(2) || hostTenantFee.toFixed(2)}</span>
                   <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded ${
                     p.status === 'approved' ? 'bg-emerald-100 text-emerald-700' :
                     p.status === 'rejected' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-700'
                   }`}>
-                    {p.status === 'approved' ? 'Approved by Tenant' : p.status === 'rejected' ? 'Rejected' : 'Pending Tenant Review'}
+                    {p.status === 'approved' ? 'Approved by Tenant' : p.status === 'rejected' ? 'Rejected by Tenant' : 'Pending Tenant Review'}
                   </span>
                 </div>
               ))}
@@ -681,15 +806,15 @@ export default function ProfileView() {
             />
             <button
               onClick={() => tenantPopInputRef.current?.click()}
-              disabled={uploadingTenantPop}
-              className="w-full bg-blue-900 hover:bg-blue-800 text-white py-3 rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center space-x-2 transition-all shadow-sm"
+              disabled={uploadingTenantPop || hostTenant?.isTenantDisabled}
+              className="w-full bg-blue-900 hover:bg-blue-800 text-white py-3 rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center space-x-2 transition-all shadow-sm disabled:opacity-50"
             >
               {uploadingTenantPop ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
               ) : (
                 <>
                   <Upload className="w-3.5 h-3.5" />
-                  <span>Upload Monthly Subscription PoP to Tenant</span>
+                  <span>Upload Monthly PoP to Tenant (R {hostTenantFee.toFixed(2)})</span>
                 </>
               )}
             </button>

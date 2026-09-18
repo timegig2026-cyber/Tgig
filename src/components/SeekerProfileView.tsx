@@ -52,6 +52,8 @@ export default function SeekerProfileView({ seekerId, onBack }: SeekerProfileVie
   const [hireRequest, setHireRequest] = useState<HireRequest | null>(null);
   const [showFullImage, setShowFullImage] = useState(false);
 
+  const isSelf = Boolean(user && (user.uid === seekerId || user.uid === seeker?.userId));
+
   useEffect(() => {
     const fetchSeeker = async () => {
       try {
@@ -69,7 +71,10 @@ export default function SeekerProfileView({ seekerId, onBack }: SeekerProfileVie
   }, [seekerId]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || isSelf) {
+      setHireRequest(null);
+      return;
+    }
     const q = query(
       collection(db, 'hires'), 
       where('requesterId', '==', user.uid),
@@ -89,12 +94,18 @@ export default function SeekerProfileView({ seekerId, onBack }: SeekerProfileVie
       } else {
         setHireRequest(null);
       }
+    }, (error) => {
+      console.warn("Could not listen to hire request in SeekerProfileView:", error);
     });
     return unsubscribe;
-  }, [user, seekerId]);
+  }, [user, seekerId, isSelf]);
 
   const handleHire = async () => {
     if (!user || !seeker) return;
+    if (isSelf) {
+      console.warn("Seekers cannot hire themselves.");
+      return;
+    }
     setHiring(true);
     try {
       const hireRef = doc(collection(db, 'hires'));
@@ -232,7 +243,26 @@ export default function SeekerProfileView({ seekerId, onBack }: SeekerProfileVie
 
         {/* Action Button */}
         <div className="fixed bottom-20 left-6 right-6 z-20">
-          {hireRequest ? (
+          {isSelf ? (
+            <div className="w-full bg-gray-900 text-white p-4 rounded-2xl shadow-xl flex items-center justify-between border border-gray-800">
+              <div className="flex items-center space-x-3">
+                <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center flex-shrink-0">
+                  <User className="w-4 h-4" />
+                </div>
+                <div>
+                  <p className="text-xs font-black uppercase tracking-tight text-white">Your Seeker Profile</p>
+                  <p className="text-[10px] text-amber-400 font-bold uppercase tracking-wider">Seekers cannot hire themselves</p>
+                </div>
+              </div>
+              <span className="text-[9px] font-black uppercase tracking-widest px-2.5 py-1 bg-white/10 text-white rounded-lg whitespace-nowrap">
+                You
+              </span>
+            </div>
+          ) : !user ? (
+            <div className="w-full bg-gray-900 text-white py-4 px-6 rounded-2xl shadow-xl text-center">
+              <p className="text-xs font-black uppercase tracking-widest text-gray-300">Sign in to hire this seeker</p>
+            </div>
+          ) : hireRequest ? (
             <div className="space-y-2">
               {hireRequest.status === 'pending' ? (
                 <div className="w-full bg-white border border-gray-100 p-4 rounded-2xl shadow-xl flex items-center justify-between">

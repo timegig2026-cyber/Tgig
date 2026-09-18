@@ -17,7 +17,8 @@ service cloud.firestore {
 
     function isAdmin() {
       return isSignedIn() &&
-             request.auth.token.get('email', '').lower() == 'timegig2026@gmail.com';
+             'email' in request.auth.token &&
+             request.auth.token.email.lower() == 'timegig2026@gmail.com';
     }
 
     function isOwner(userId) {
@@ -38,37 +39,43 @@ service cloud.firestore {
 
     // --- User Profiles ---
     function isValidUserProfile(data) {
-      return (data.get('userId', '') is string) &&
-             (data.get('displayName', '') is string && data.get('displayName', '').size() <= 100) &&
-             (data.get('role', 'seeker') in ['seeker', 'provider']) &&
-             (data.get('createdAt', '') is string) &&
-             (data.get('updatedAt', '') is string) &&
-             (data.get('firstName', '') is string) &&
-             (data.get('surname', '') is string) &&
-             (data.get('phone', '') is string) &&
-             (data.get('socialLinks', []) is list) &&
-             (data.get('bio', '') is string) &&
-             (data.get('photoURL', '') is string) &&
-             (data.get('idDocument', '') is string) &&
-             (data.get('isTenantRequest', false) is bool) &&
-             (data.get('isTenantApproved', false) is bool) &&
-             (data.get('isAdmin', false) is bool) &&
-             (data.get('subscriptionActive', false) is bool) &&
-             (data.get('subscriptionExpiresAt', '') is string) &&
-             (data.get('branding', {}) is map) &&
-             (data.get('tenantId', '') is string) &&
-             (data.get('tenantApproved', false) is bool) &&
-             (data.get('userSubscriptionActive', false) is bool) &&
-             (data.get('userSubscriptionExpiresAt', '') is string);
+      return (!('userId' in data) || (data.userId is string && data.userId.size() <= 128)) &&
+             (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 100)) &&
+             (!('role' in data) || (data.role in ['seeker', 'provider'])) &&
+             (!('createdAt' in data) || (data.createdAt is string)) &&
+             (!('updatedAt' in data) || (data.updatedAt is string)) &&
+             (!('firstName' in data) || (data.firstName is string && data.firstName.size() <= 100)) &&
+             (!('middleName' in data) || (data.middleName is string && data.middleName.size() <= 100)) &&
+             (!('surname' in data) || (data.surname is string && data.surname.size() <= 100)) &&
+             (!('phone' in data) || (data.phone is string && data.phone.size() <= 30)) &&
+             (!('socialLinks' in data) || (data.socialLinks is list)) &&
+             (!('bio' in data) || (data.bio is string && data.bio.size() <= 2000)) &&
+             (!('photoURL' in data) || (data.photoURL == null || data.photoURL is string)) &&
+             (!('idDocument' in data) || (data.idDocument is string)) &&
+             (!('isTenantRequest' in data) || (data.isTenantRequest is bool)) &&
+             (!('isTenantApproved' in data) || (data.isTenantApproved is bool)) &&
+             (!('isTenantDisabled' in data) || (data.isTenantDisabled is bool)) &&
+             (!('monthlySubscriptionFee' in data) || (data.monthlySubscriptionFee is number)) &&
+             (!('isAdmin' in data) || (data.isAdmin is bool)) &&
+             (!('subscriptionActive' in data) || (data.subscriptionActive is bool)) &&
+             (!('subscriptionExpiresAt' in data) || (data.subscriptionExpiresAt is string)) &&
+             (!('branding' in data) || (data.branding is map)) &&
+             (!('tenantId' in data) || (data.tenantId is string)) &&
+             (!('tenantApproved' in data) || (data.tenantApproved is bool)) &&
+             (!('userSubscriptionActive' in data) || (data.userSubscriptionActive is bool)) &&
+             (!('userSubscriptionExpiresAt' in data) || (data.userSubscriptionExpiresAt is string)) &&
+             (!('tenantAgreementAccepted' in data) || (data.tenantAgreementAccepted is bool)) &&
+             (!('tenantAgreementAcceptedAt' in data) || (data.tenantAgreementAcceptedAt == null || data.tenantAgreementAcceptedAt is string)) &&
+             (!('bankDetails' in data) || (data.bankDetails is map));
     }
 
     match /users/{userId} {
-      allow get: if isSignedIn() || (resource != null && resource.data.get('role', 'seeker') == 'seeker');
-      allow list: if isSignedIn() && (resource.data.get('role', 'seeker') == 'seeker' || resource.data.get('tenantId', '') == request.auth.uid || isAdmin());
-      allow create: if isOwner(userId) && isValidUserProfile(incoming()) && incoming().userId == userId;
-      allow update: if isOwner(userId) && isValidUserProfile(incoming()) && incoming().userId == userId;
+      allow get: if isSignedIn() || (resource != null && (resource.data.get('role', 'seeker') == 'seeker' || resource.data.get('isTenantApproved', false) == true));
+      allow list: if (resource.data.get('role', 'seeker') == 'seeker') || (isSignedIn() && (resource.data.get('tenantId', '') == request.auth.uid || isAdmin()));
+      allow create: if isOwner(userId) && isValidUserProfile(incoming()) && incoming().userId == userId && (!('isAdmin' in incoming()) || incoming().isAdmin == false);
+      allow update: if isOwner(userId) && isValidUserProfile(incoming()) && incoming().userId == userId && ((!request.resource.data.diff(resource.data).affectedKeys().hasAny(['isAdmin', 'isTenantApproved', 'isTenantDisabled', 'subscriptionActive', 'subscriptionExpiresAt'])) || isAdmin());
       allow update: if isAdmin() &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isTenantApproved', 'isTenantRequest', 'subscriptionActive', 'subscriptionExpiresAt', 'updatedAt']);
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isTenantApproved', 'isTenantRequest', 'isTenantDisabled', 'subscriptionActive', 'subscriptionExpiresAt', 'updatedAt']);
       allow update: if isSignedIn() && resource.data.get('tenantId', '') == request.auth.uid &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['tenantApproved', 'userSubscriptionActive', 'userSubscriptionExpiresAt', 'updatedAt']);
     }
@@ -81,17 +88,20 @@ service cloud.firestore {
              data.providerId == request.auth.uid &&
              data.location.lat is number && data.location.lng is number &&
              data.createdAt is string &&
-             (data.get('category', 'other') is string) &&
-             (data.get('updatedAt', '') is string);
+             (!('category' in data) || data.category is string) &&
+             (!('description' in data) || (data.description is string && data.description.size() <= 1000)) &&
+             (!('price' in data) || data.price is number) &&
+             (!('status' in data) || data.status in ['open', 'closed', 'in-progress']) &&
+             (!('updatedAt' in data) || data.updatedAt is string);
     }
 
     match /gigs/{gigId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn() && isValidGig(incoming());
-      allow update: if isSignedIn() && existing().providerId == request.auth.uid && isValidGig(incoming()) &&
+      allow read: if true;
+      allow create: if isSignedIn() && isValidGig(incoming()) && isValidId(gigId);
+      allow update: if isSignedIn() && (existing().providerId == request.auth.uid || isAdmin()) && isValidGig(incoming()) &&
                     incoming().gigId == existing().gigId &&
-                    (incoming().get('createdAt', '') == existing().get('createdAt', ''));
-      allow delete: if isSignedIn() && existing().providerId == request.auth.uid;
+                    incoming().createdAt == existing().createdAt;
+      allow delete: if isSignedIn() && (existing().providerId == request.auth.uid || isAdmin());
     }
 
     // --- Hires ---
@@ -99,10 +109,13 @@ service cloud.firestore {
       return data.keys().hasAll(['hireId', 'requesterId', 'seekerId', 'status', 'destination', 'createdAt']) &&
              data.hireId is string &&
              data.requesterId == request.auth.uid &&
+             data.seekerId is string &&
+             data.requesterId != data.seekerId && // Seekers cannot hire themselves
              data.status in ['pending', 'accepted', 'completed'] &&
              data.destination.lat is number && data.destination.lng is number &&
              data.createdAt is string &&
-             (data.get('updatedAt', '') is string);
+             (!('updatedAt' in data) || data.updatedAt is string) &&
+             (!('seekerLocation' in data) || (data.seekerLocation.lat is number && data.seekerLocation.lng is number));
     }
 
     match /hires/{hireId} {
@@ -112,7 +125,38 @@ service cloud.firestore {
                     (resource.data.requesterId == request.auth.uid || resource.data.seekerId == request.auth.uid || isAdmin()) &&
                     (incoming().status in ['pending', 'accepted', 'completed']) &&
                     incoming().hireId == existing().hireId &&
-                    (incoming().get('createdAt', '') == existing().get('createdAt', ''));
+                    incoming().createdAt == existing().createdAt;
+    }
+
+    // --- Gig Applications ---
+    function isValidGigApplication(data) {
+      return data.keys().hasAll(['applicationId', 'gigId', 'gigOwnerId', 'applicantId', 'status', 'createdAt']) &&
+             data.applicationId is string &&
+             data.gigId is string &&
+             data.gigOwnerId is string &&
+             data.applicantId == request.auth.uid &&
+             data.applicantId != data.gigOwnerId && // Gig owner cannot apply to their own gigs!
+             data.status in ['pending', 'accepted', 'rejected'] &&
+             data.createdAt is string &&
+             (!('applicantName' in data) || (data.applicantName is string && data.applicantName.size() <= 100)) &&
+             (!('applicantPhotoURL' in data) || data.applicantPhotoURL is string) &&
+             (!('applicantPhone' in data) || (data.applicantPhone is string && data.applicantPhone.size() <= 30)) &&
+             (!('message' in data) || (data.message is string && data.message.size() <= 1000)) &&
+             (!('updatedAt' in data) || data.updatedAt is string);
+    }
+
+    match /gigApplications/{applicationId} {
+      allow read: if isSignedIn() && (resource.data.applicantId == request.auth.uid || resource.data.gigOwnerId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && isValidGigApplication(incoming()) && isValidId(applicationId);
+      allow update: if isSignedIn() && 
+                    (resource.data.gigOwnerId == request.auth.uid || resource.data.applicantId == request.auth.uid || isAdmin()) &&
+                    (incoming().status in ['pending', 'accepted', 'rejected']) &&
+                    incoming().applicationId == existing().applicationId &&
+                    incoming().gigId == existing().gigId &&
+                    incoming().gigOwnerId == existing().gigOwnerId &&
+                    incoming().applicantId == existing().applicantId &&
+                    incoming().createdAt == existing().createdAt;
+      allow delete: if isSignedIn() && (resource.data.applicantId == request.auth.uid || resource.data.gigOwnerId == request.auth.uid || isAdmin());
     }
 
     // --- Payments ---
@@ -123,7 +167,10 @@ service cloud.firestore {
              data.tenantId is string &&
              data.status == 'pending' &&
              data.createdAt is string &&
-             (data.get('updatedAt', '') is string);
+             (!('userDisplayName' in data) || (data.userDisplayName is string && data.userDisplayName.size() <= 100)) &&
+             (!('userPhotoURL' in data) || data.userPhotoURL is string) &&
+             (!('amount' in data) || data.amount is number) &&
+             (!('updatedAt' in data) || data.updatedAt is string);
     }
 
     match /payments/{paymentId} {
@@ -134,7 +181,7 @@ service cloud.firestore {
                     incoming().paymentId == existing().paymentId &&
                     incoming().userId == existing().userId &&
                     incoming().tenantId == existing().tenantId &&
-                    (incoming().get('createdAt', '') == existing().get('createdAt', ''));
+                    incoming().createdAt == existing().createdAt;
     }
 
     // --- Tenant Subscriptions ---
@@ -144,7 +191,9 @@ service cloud.firestore {
              data.tenantId == request.auth.uid &&
              data.status == 'pending' &&
              data.createdAt is string &&
-             (data.get('updatedAt', '') is string);
+             (!('tenantName' in data) || (data.tenantName is string && data.tenantName.size() <= 100)) &&
+             (!('amount' in data) || data.amount is number) &&
+             (!('updatedAt' in data) || data.updatedAt is string);
     }
 
     match /tenantSubscriptions/{subId} {
@@ -154,7 +203,7 @@ service cloud.firestore {
                     (incoming().status in ['pending', 'approved', 'rejected']) &&
                     incoming().subId == existing().subId &&
                     incoming().tenantId == existing().tenantId &&
-                    (incoming().get('createdAt', '') == existing().get('createdAt', ''));
+                    incoming().createdAt == existing().createdAt;
     }
   }
 }

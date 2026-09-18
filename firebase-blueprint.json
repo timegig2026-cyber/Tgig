@@ -28,6 +28,8 @@
         },
         "isTenantRequest": { "type": "boolean", "description": "Whether the user has requested to be a tenant." },
         "isTenantApproved": { "type": "boolean", "description": "Whether the user's tenant request is approved." },
+        "isTenantDisabled": { "type": "boolean", "description": "Whether the tenant account is disabled by admin." },
+        "monthlySubscriptionFee": { "type": "number", "description": "Custom monthly subscription fee set by tenant." },
         "isAdmin": { "type": "boolean", "description": "Whether the user is an administrator." },
         "subscriptionActive": { "type": "boolean", "description": "Whether the tenant subscription is active." },
         "subscriptionExpiresAt": { "type": "string", "format": "date-time", "description": "When the tenant subscription expires." },
@@ -35,6 +37,19 @@
         "tenantApproved": { "type": "boolean", "description": "Whether the tenant has approved this user." },
         "userSubscriptionActive": { "type": "boolean", "description": "Whether the user's monthly subscription to the tenant is active." },
         "userSubscriptionExpiresAt": { "type": "string", "format": "date-time", "description": "Expiry date of the user's monthly subscription to the tenant." },
+        "tenantAgreementAccepted": { "type": "boolean", "description": "Whether the user has accepted the tenant agreement." },
+        "tenantAgreementAcceptedAt": { "type": "string", "format": "date-time", "description": "Timestamp when the tenant agreement was accepted." },
+        "bankDetails": {
+          "type": "object",
+          "properties": {
+            "bankName": { "type": "string" },
+            "accountHolder": { "type": "string" },
+            "accountNumber": { "type": "string" },
+            "accountType": { "type": "string" },
+            "branchCode": { "type": "string" }
+          },
+          "description": "Tenant banking details for receiving member payments."
+        },
         "branding": {
           "type": "object",
           "properties": {
@@ -77,7 +92,7 @@
     },
     "Hire": {
       "title": "Hire",
-      "description": "Represents a hiring request from a user to a seeker.",
+      "description": "Represents a hiring request from a user to a seeker. Seekers cannot hire themselves.",
       "type": "object",
       "properties": {
         "hireId": { "type": "string" },
@@ -102,6 +117,25 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["hireId", "requesterId", "seekerId", "status", "destination", "createdAt"]
+    },
+    "GigApplication": {
+      "title": "Gig Application",
+      "description": "Represents an application from a seeker to a gig. Gig owners cannot apply to their own gigs.",
+      "type": "object",
+      "properties": {
+        "applicationId": { "type": "string" },
+        "gigId": { "type": "string" },
+        "gigOwnerId": { "type": "string" },
+        "applicantId": { "type": "string" },
+        "applicantName": { "type": "string", "maxLength": 100 },
+        "applicantPhotoURL": { "type": "string" },
+        "applicantPhone": { "type": "string", "maxLength": 30 },
+        "message": { "type": "string", "maxLength": 1000 },
+        "status": { "type": "string", "enum": ["pending", "accepted", "rejected"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["applicationId", "gigId", "gigOwnerId", "applicantId", "status", "createdAt"]
     },
     "Payment": {
       "title": "Payment",
@@ -150,6 +184,10 @@
     "/hires/{hireId}": {
       "schema": "Hire",
       "description": "Hiring records between users and seekers."
+    },
+    "/gigApplications/{applicationId}": {
+      "schema": "GigApplication",
+      "description": "Gig applications submitted by seekers. Gig owners cannot apply to their own gigs."
     },
     "/payments/{paymentId}": {
       "schema": "Payment",

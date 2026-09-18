@@ -114,7 +114,14 @@ export default function SeekersView({ onSelectSeeker }: SeekersViewProps) {
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <h4 className="font-black text-gray-900 tracking-tight truncate">{seeker.displayName}</h4>
+                  <div className="flex items-center space-x-2">
+                    <h4 className="font-black text-gray-900 tracking-tight truncate">{seeker.displayName}</h4>
+                    {seeker.userId === user?.uid && (
+                      <span className="px-2 py-0.5 bg-gray-100 text-gray-800 text-[8px] font-black uppercase tracking-widest rounded-full border border-gray-200 flex-shrink-0">
+                        You
+                      </span>
+                    )}
+                  </div>
                   <div className="flex items-center text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">
                     <MapPin className="w-3 h-3 mr-1 text-gray-300" />
                     <span>South Africa</span>

@@ -5,6 +5,7 @@ import 'leaflet/dist/leaflet.css';
 import { db, collection, onSnapshot, query, setDoc, doc, serverTimestamp, handleFirestoreError, OperationType } from '../lib/firebase';
 import { useAuth } from './AuthProvider';
 import { MapPin, Plus, Briefcase, Clock, Send, X, Loader2, Globe } from 'lucide-react';
+import GigDetailModal from './GigDetailModal';
 
 // Fix for default marker icon issue in Leaflet with bundlers
 import icon from 'leaflet/dist/images/marker-icon.png';
@@ -87,6 +88,7 @@ function LocationMarker() {
 export default function GiGsMap({ onClose }: GiGsMapProps) {
   const { user } = useAuth();
   const [gigs, setGigs] = useState<Gig[]>([]);
+  const [selectedGig, setSelectedGig] = useState<Gig | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newGigTitle, setNewGigTitle] = useState('');
   const [newGigCategory, setNewGigCategory] = useState('other');
@@ -105,6 +107,8 @@ export default function GiGsMap({ onClose }: GiGsMapProps) {
         ...doc.data()
       })) as Gig[];
       setGigs(gigData);
+    }, (error) => {
+      console.warn("Could not load gigs:", error);
     });
     return unsubscribe;
   }, []);
@@ -178,20 +182,34 @@ export default function GiGsMap({ onClose }: GiGsMapProps) {
                     </div>
                     <h3 className="font-black text-gray-900 uppercase tracking-tight text-xs">{gig.title}</h3>
                   </div>
-                  {gig.category && (
-                    <div className="flex items-center space-x-1">
+                  <div className="flex flex-wrap items-center gap-1">
+                    {gig.category && (
                       <span className="px-1.5 py-0.5 bg-blue-50 text-blue-600 text-[8px] font-black uppercase tracking-widest rounded">
                         {gig.category}
                       </span>
-                    </div>
-                  )}
+                    )}
+                    {user && gig.providerId === user.uid && (
+                      <span className="px-1.5 py-0.5 bg-amber-50 text-amber-800 text-[8px] font-black uppercase tracking-widest rounded border border-amber-200">
+                        Owner
+                      </span>
+                    )}
+                  </div>
                   <p className="text-[11px] text-gray-500 font-medium leading-relaxed italic line-clamp-3">{gig.description}</p>
                   <div className="flex items-center justify-between pt-2 border-t border-gray-100">
                     <div className="flex items-center space-x-1">
                       <Clock className="w-2.5 h-2.5 text-gray-400" />
                       <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Active GiG</span>
                     </div>
-                    <button className="text-[8px] font-black text-blue-600 uppercase tracking-widest hover:underline">Details</button>
+                    <button 
+                      onClick={() => setSelectedGig(gig)}
+                      className={`text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded transition-colors ${
+                        user && gig.providerId === user.uid
+                          ? 'bg-amber-100 text-amber-900 hover:bg-amber-200'
+                          : 'bg-gray-900 text-white hover:bg-gray-800'
+                      }`}
+                    >
+                      {user && gig.providerId === user.uid ? 'Manage GiG' : 'View & Apply'}
+                    </button>
                   </div>
                 </div>
               </Popup>
@@ -313,6 +331,14 @@ export default function GiGsMap({ onClose }: GiGsMapProps) {
             </div>
           </div>
         </div>
+      )}
+
+      {selectedGig && (
+        <GigDetailModal 
+          gig={selectedGig}
+          onClose={() => setSelectedGig(null)}
+          onGigDeleted={() => setSelectedGig(null)}
+        />
       )}
     </div>
   );

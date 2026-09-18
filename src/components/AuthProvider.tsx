@@ -33,6 +33,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (snapshot.exists()) {
             const data = snapshot.data();
             setProfile(data);
+
+            // Auto-disable tenant if subscription failed/expired
+            if (data.isTenantApproved && data.subscriptionExpiresAt && !data.isTenantDisabled) {
+              const expires = new Date(data.subscriptionExpiresAt);
+              if (expires < new Date()) {
+                import('../lib/firebase').then(async ({ updateDoc }) => {
+                  try {
+                    await updateDoc(profileRef, { 
+                      isTenantDisabled: true,
+                      subscriptionActive: false,
+                      updatedAt: new Date().toISOString()
+                    });
+                  } catch (e) {
+                    console.warn("Could not auto-disable expired tenant", e);
+                  }
+                });
+              }
+            }
+
             const tenantRef = typeof window !== 'undefined' ? (localStorage.getItem('tenant_ref') || '') : '';
             if (tenantRef && tenantRef !== user.uid && !data.tenantId && !data.isTenantApproved && !data.isAdmin) {
               import('../lib/firebase').then(async ({ updateDoc }) => {

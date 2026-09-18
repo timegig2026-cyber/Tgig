@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from './AuthProvider';
 import { db, doc, updateDoc, handleFirestoreError, OperationType } from '../lib/firebase';
-import { User, MapPin, Phone, Globe, Upload, Plus, X, Loader2, Check, ArrowLeft, FileText, TrendingUp, ShieldCheck } from 'lucide-react';
+import { User, MapPin, Phone, Globe, Upload, Plus, X, Loader2, Check, ArrowLeft, FileText, TrendingUp, ShieldCheck, ExternalLink } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
+import { TENANT_AGREEMENT_TEXT } from '../constants/tenantAgreement';
 
 interface ProfileEditProps {
   onClose: () => void;
@@ -30,6 +31,8 @@ export default function ProfileEdit({ onClose }: ProfileEditProps) {
     profile?.location ? { lat: Number(profile.location.lat || profile.location.latitude || -30.5595), lng: Number(profile.location.lng || profile.location.longitude || 22.9375) } : { lat: -30.5595, lng: 22.9375 }
   );
   const [isTenantRequest, setIsTenantRequest] = useState(profile?.isTenantRequest || false);
+  const [acceptTenantAgreement, setAcceptTenantAgreement] = useState(profile?.tenantAgreementAccepted || false);
+  const [showAgreementModal, setShowAgreementModal] = useState(false);
   const [idDocument, setIdDocument] = useState<string>(profile?.idDocument || '');
   const [idDocName, setIdDocName] = useState<string>('');
 
@@ -79,6 +82,12 @@ export default function ProfileEdit({ onClose }: ProfileEditProps) {
     setLoading(true);
     setError('');
 
+    if (isTenantRequest && !acceptTenantAgreement) {
+      setError('You must accept the Tenant Agreement to apply for the program.');
+      setLoading(false);
+      return;
+    }
+
     try {
       const profileRef = doc(db, 'users', user.uid);
       const profileData: any = {
@@ -94,6 +103,8 @@ export default function ProfileEdit({ onClose }: ProfileEditProps) {
         socialLinks: socialLinks.filter(l => l.trim() !== ''),
         idDocument,
         isTenantRequest,
+        tenantAgreementAccepted: acceptTenantAgreement,
+        tenantAgreementAcceptedAt: acceptTenantAgreement ? (profile?.tenantAgreementAcceptedAt || new Date().toISOString()) : null,
         updatedAt: new Date().toISOString()
       };
 
@@ -379,6 +390,33 @@ export default function ProfileEdit({ onClose }: ProfileEditProps) {
               Once enabled, resubmit your profile. Our team will review your ID and details for approval.
             </p>
           </div>
+
+          {isTenantRequest && !profile?.isTenantApproved && (
+            <div className="space-y-4">
+              <div className="flex items-start space-x-3 py-2 bg-white/50 p-3 rounded-xl border border-blue-100">
+                <input
+                  type="checkbox"
+                  id="tenantAgreement"
+                  checked={acceptTenantAgreement}
+                  onChange={(e) => setAcceptTenantAgreement(e.target.checked)}
+                  className="mt-1 w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-600"
+                />
+                <label htmlFor="tenantAgreement" className="text-[10px] text-blue-900 font-bold leading-relaxed uppercase tracking-tight">
+                  I have read and agree to the <button type="button" onClick={() => setShowAgreementModal(true)} className="text-blue-600 underline hover:text-blue-700">TimeGig Tenant Agreement</button>. I confirm that I am legally permitted to enter into this Agreement.
+                </label>
+              </div>
+              
+              <button
+                type="button"
+                onClick={() => setShowAgreementModal(true)}
+                className="w-full py-2 px-4 bg-white border border-blue-200 text-blue-600 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center space-x-2 hover:bg-blue-50 transition-colors"
+              >
+                <FileText className="w-3 h-3" />
+                <span>Read Full Agreement</span>
+              </button>
+            </div>
+          )}
+
           {profile?.isTenantApproved && (
             <div className="flex items-center space-x-2 bg-white/50 p-2 rounded-lg border border-blue-100">
               <ShieldCheck className="w-4 h-4 text-green-500" />
@@ -404,6 +442,49 @@ export default function ProfileEdit({ onClose }: ProfileEditProps) {
           )}
         </button>
       </form>
+
+      {/* Agreement Modal */}
+      {showAgreementModal && (
+        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-lg h-[80vh] rounded-[32px] overflow-hidden flex flex-col shadow-2xl">
+            <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-black text-gray-900 uppercase tracking-widest">Tenant Agreement</h3>
+                <p className="text-[8px] text-gray-400 font-bold uppercase tracking-widest">Please read carefully</p>
+              </div>
+              <button 
+                onClick={() => setShowAgreementModal(false)}
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-400" />
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              <div className="prose prose-sm max-w-none">
+                {TENANT_AGREEMENT_TEXT.split('\n').map((line, i) => (
+                  <p key={i} className={`text-[11px] leading-relaxed text-gray-600 ${line.match(/^\d+\. /) ? 'font-black text-gray-900 mt-6 mb-2 uppercase' : ''}`}>
+                    {line}
+                  </p>
+                ))}
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-gray-100 bg-gray-50">
+              <button
+                onClick={() => {
+                  setAcceptTenantAgreement(true);
+                  setShowAgreementModal(false);
+                }}
+                className="w-full py-4 bg-gray-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg hover:bg-gray-800 transition-all flex items-center justify-center space-x-2"
+              >
+                <Check className="w-4 h-4" />
+                <span>I Understand & Agree</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

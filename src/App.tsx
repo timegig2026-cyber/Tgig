@@ -62,6 +62,9 @@ function MainApp() {
       // Hide splash after 5 seconds
       const timer = setTimeout(() => setShowSplash(false), 5000);
       return () => clearTimeout(timer);
+    }, (error) => {
+      console.warn("Could not load user profile for branding in App:", error);
+      setShowSplash(false);
     });
 
     return () => unsub();
