@@ -553,29 +553,25 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
                           </div>
                         </div>
 
-                        {/* Middle Row: Full 16-digit card number */}
+                        {/* Middle Row: Account Number */}
                         <div className="space-y-1">
-                          <div className="text-[7px] font-black uppercase tracking-widest text-white/40">Card Number</div>
+                          <div className="text-[7px] font-black uppercase tracking-widest text-white/40">Capitec Account Number</div>
                           <p className="text-xl md:text-2xl font-mono tracking-[0.18em] font-black text-white/95 drop-shadow-[0_2px_3px_rgba(0,0,0,0.8)] filter">
-                            1334 0673 8892 0673
+                            1334 0673 66
                           </p>
                         </div>
 
-                        {/* Bottom Row: Expiry, CVV, Cardholder Name, Reference */}
+                        {/* Bottom Row: Reference Code */}
                         <div className="flex justify-between items-end pt-2 border-t border-white/10">
-                          <div className="flex space-x-4">
-                            <div className="space-y-0.5">
-                              <p className="text-[6px] font-black uppercase tracking-widest text-white/50">Expires</p>
-                              <p className="text-[11px] font-mono font-black text-white">09/28</p>
-                            </div>
-                            <div className="space-y-0.5">
-                              <p className="text-[6px] font-black uppercase tracking-widest text-white/50">CVV</p>
-                              <p className="text-[11px] font-mono font-black text-cyan-300">482</p>
-                            </div>
+                          <div className="space-y-0.5">
+                            <p className="text-[6px] font-black uppercase tracking-widest text-white/50">Payment Reference</p>
+                            <p className="text-xs font-black font-mono text-cyan-300 tracking-widest bg-white/10 px-2.5 py-1 rounded border border-white/10 shadow-inner">
+                              Sub30
+                            </p>
                           </div>
 
                           <div className="space-y-0.5 text-right">
-                            <p className="text-[6px] font-black uppercase tracking-widest text-white/50">Cardholder Name</p>
+                            <p className="text-[6px] font-black uppercase tracking-widest text-white/50">Account Holder</p>
                             <p className="text-[11px] font-black uppercase tracking-wider text-white drop-shadow">Matthews</p>
                           </div>
                         </div>
