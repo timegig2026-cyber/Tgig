@@ -87,8 +87,9 @@ export default function AdminView({ onClose }: AdminViewProps) {
       setSelectedSubDoc(null);
     } catch (error: any) {
       console.error("Error approving sub", error);
-      setLastError(`Sub Approval Failed: ${error.message} (Code: ${error.code})`);
-      alert(`Approval Failed\n${error.message}`);
+      const errDetails = `Sub Approval Failed\nOperation: Update User & Subscription\nPath: users/${sub.tenantId} & tenantSubscriptions/${sub.subId}\nCode: ${error.code || 'UNKNOWN'}\nMessage: ${error.message || String(error)}`;
+      setLastError(errDetails);
+      alert(errDetails);
     }
   };
 

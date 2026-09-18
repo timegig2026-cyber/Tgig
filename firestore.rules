@@ -64,7 +64,7 @@ service cloud.firestore {
       allow create: if isOwner(userId) && isValidUserProfile(incoming()) && incoming().userId == userId;
       allow update: if isOwner(userId) && isValidUserProfile(incoming()) && incoming().userId == userId;
       allow update: if isAdmin() &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isTenantApproved', 'isTenantRequest', 'subscriptionActive', 'updatedAt']);
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isTenantApproved', 'isTenantRequest', 'subscriptionActive', 'subscriptionExpiresAt', 'updatedAt']);
     }
 
     // --- Gigs ---
