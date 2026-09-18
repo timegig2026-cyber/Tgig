@@ -10,6 +10,7 @@ import 'leaflet/dist/leaflet.css';
 import TenantPortalView from './TenantPortalView';
 import AdminView from './AdminView';
 import { PWAInstallButton } from './PWAControls';
+import { speak } from '../lib/voice';
 
 // Fix for default marker icon issue in Leaflet with bundlers
 import icon from 'leaflet/dist/images/marker-icon.png';
@@ -81,6 +82,9 @@ export default function ProfileView() {
 
   const handleNavigateToGig = (gig: any) => {
     if (!gig.location) return;
+    
+    speak("Navigation started. Please follow the map to reach the GiG destination.");
+
     navigator.geolocation.getCurrentPosition((position) => {
       const originLat = position.coords.latitude;
       const originLng = position.coords.longitude;
@@ -100,6 +104,9 @@ export default function ProfileView() {
         status: 'arrived',
         updatedAt: new Date().toISOString()
       });
+
+      speak("You have arrived at your destination. We have notified the GiG owner of your arrival.");
+
       // Notify owner
       const notifRef = doc(collection(db, 'users', gigOwnerId, 'notifications'));
       await setDoc(notifRef, {
@@ -688,8 +695,53 @@ export default function ProfileView() {
                 ? 'Your tenant account is disabled by administration. Features and earnings are paused.'
                 : profile?.isTenantApproved 
                 ? 'Your tenant account is active. Access your portal to manage services and payments.' 
-                : 'Earn passive income by hosting services. Enable this in your profile settings and resubmit for approval.'}
+                : 'Limited Opportunity! Only 1,000 spots available to become a Tenant. Earn passive income by managing your own network of seekers.'}
             </p>
+
+            {!profile?.isTenantApproved && !profile?.isTenantRequest && !profile?.isTenantDisabled && (
+              <div className="bg-indigo-50 border-2 border-indigo-100 p-4 rounded-2xl space-y-3">
+                <div className="flex items-center space-x-2 text-indigo-700 font-black">
+                  <ShieldCheck className="w-4 h-4 text-indigo-600 shrink-0" />
+                  <span className="uppercase tracking-widest text-[10px]">Exclusive Tenant Offer</span>
+                </div>
+                <div className="flex justify-between items-center">
+                   <p className="text-xl font-black text-indigo-900 uppercase">1000 Spots</p>
+                   <span className="text-[9px] font-black bg-indigo-200 text-indigo-800 px-2 py-1 rounded-lg uppercase tracking-widest animate-pulse">Limited</span>
+                </div>
+                <p className="text-[10px] text-indigo-700 leading-relaxed font-medium">
+                  Become a tenant and unlock the power to manage your own community. Only 1000 slots are available on the platform.
+                </p>
+                <button
+                  onClick={async () => {
+                    if (!user) return;
+                    try {
+                      await updateDoc(doc(db, 'users', user.uid), {
+                        isTenantRequest: true,
+                        updatedAt: new Date().toISOString()
+                      });
+                      speak("Tenant request submitted. Our admin will review your application shortly. Remember, there are only 1000 spots available.");
+                    } catch (e) {
+                      console.error("Error requesting tenant", e);
+                    }
+                  }}
+                  className="w-full bg-indigo-600 text-white py-3 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition-all active:scale-95"
+                >
+                  Request Tenant Access
+                </button>
+              </div>
+            )}
+
+            {profile?.isTenantRequest && !profile?.isTenantApproved && (
+              <div className="bg-orange-50 border-2 border-orange-100 p-4 rounded-2xl space-y-2">
+                <div className="flex items-center space-x-2 text-orange-700 font-black">
+                  <Clock className="w-4 h-4 text-orange-600 shrink-0" />
+                  <span className="uppercase tracking-widest text-[10px]">Request Pending</span>
+                </div>
+                <p className="text-[10px] text-orange-700 leading-relaxed font-medium">
+                  Your request to become a tenant is being reviewed. We will notify you once you're approved. 1000 spots total capacity.
+                </p>
+              </div>
+            )}
 
             {profile?.isTenantDisabled && (
               <div className="p-4 bg-red-50 border-2 border-red-200 rounded-2xl space-y-3 text-xs">

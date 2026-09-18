@@ -134,14 +134,12 @@ service cloud.firestore {
 
     // --- Gig Applications ---
     function isValidGigApplication(data) {
-      return data.keys().hasAll(['applicationId', 'gigId', 'gigOwnerId', 'applicantId', 'status', 'createdAt']) &&
-             data.applicationId is string &&
-             data.gigId is string &&
-             data.gigOwnerId is string &&
-             data.applicantId == request.auth.uid &&
-             data.applicantId != data.gigOwnerId && // Gig owner cannot apply to their own gigs!
-             data.status in ['pending', 'accepted', 'rejected'] &&
-             data.createdAt is string &&
+      return (!('applicationId' in data) || data.applicationId is string) &&
+             (!('gigId' in data) || data.gigId is string) &&
+             (!('gigOwnerId' in data) || data.gigOwnerId is string) &&
+             (!('applicantId' in data) || data.applicantId is string) &&
+             (!('status' in data) || data.status in ['pending', 'accepted', 'rejected', 'arrived', 'completed']) &&
+             (!('createdAt' in data) || data.createdAt is string) &&
              (!('applicantName' in data) || (data.applicantName is string && data.applicantName.size() <= 100)) &&
              (!('applicantPhotoURL' in data) || data.applicantPhotoURL is string) &&
              (!('applicantPhone' in data) || (data.applicantPhone is string && data.applicantPhone.size() <= 30)) &&
@@ -151,16 +149,30 @@ service cloud.firestore {
 
     match /gigApplications/{applicationId} {
       allow read: if isSignedIn() && (resource.data.applicantId == request.auth.uid || resource.data.gigOwnerId == request.auth.uid || isAdmin());
-      allow create: if isSignedIn() && isValidGigApplication(incoming()) && isValidId(applicationId);
-      allow update: if isSignedIn() && 
-                    (resource.data.gigOwnerId == request.auth.uid || resource.data.applicantId == request.auth.uid || isAdmin()) &&
-                    (incoming().status in ['pending', 'accepted', 'rejected']) &&
-                    incoming().applicationId == existing().applicationId &&
-                    incoming().gigId == existing().gigId &&
-                    incoming().gigOwnerId == existing().gigOwnerId &&
-                    incoming().applicantId == existing().applicantId &&
-                    incoming().createdAt == existing().createdAt;
+      allow create: if isSignedIn() && 
+                    incoming().keys().hasAll(['applicationId', 'gigId', 'gigOwnerId', 'applicantId', 'status', 'createdAt']) &&
+                    isValidGigApplication(incoming()) && 
+                    isValidId(applicationId) && 
+                    incoming().applicantId == request.auth.uid && 
+                    incoming().applicantId != incoming().gigOwnerId;
+      allow update: if isSignedIn() && isValidGigApplication(incoming()) && (
+        isAdmin() ||
+        (
+          (resource.data.gigOwnerId == request.auth.uid || resource.data.applicantId == request.auth.uid) &&
+          (!('applicationId' in existing()) || incoming().applicationId == existing().applicationId) &&
+          (!('gigId' in existing()) || incoming().gigId == existing().gigId) &&
+          (!('gigOwnerId' in existing()) || incoming().gigOwnerId == existing().gigOwnerId) &&
+          (!('applicantId' in existing()) || incoming().applicantId == existing().applicantId) &&
+          (!('createdAt' in existing()) || incoming().createdAt == existing().createdAt)
+        )
+      );
       allow delete: if isSignedIn() && (resource.data.applicantId == request.auth.uid || resource.data.gigOwnerId == request.auth.uid || isAdmin());
+    }
+
+    match /users/{userId}/notifications/{notifId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isSignedIn();
+      allow update, delete: if isOwner(userId) || isAdmin();
     }
 
     // --- Payments ---

@@ -148,7 +148,7 @@
         "applicantPhotoURL": { "type": "string" },
         "applicantPhone": { "type": "string", "maxLength": 30 },
         "message": { "type": "string", "maxLength": 1000 },
-        "status": { "type": "string", "enum": ["pending", "accepted", "rejected"] },
+        "status": { "type": "string", "enum": ["pending", "accepted", "rejected", "arrived", "completed"] },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },

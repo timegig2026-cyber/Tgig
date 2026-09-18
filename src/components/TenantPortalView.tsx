@@ -788,6 +788,12 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
                     </p>
                   </div>
 
+                  <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100">
+                    <ShieldCheck className="w-5 h-5 text-emerald-600 mb-2" />
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Platform Capacity</p>
+                    <p className="text-2xl font-black text-gray-900">1,000 <span className="text-xs text-gray-400 font-bold">Spots</span></p>
+                  </div>
+
                   <div 
                     onClick={() => setActiveTab('pop')}
                     className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 cursor-pointer hover:border-blue-200 transition-all group"

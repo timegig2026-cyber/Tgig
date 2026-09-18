@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from './AuthProvider';
-import { db, doc, getDoc, collection, setDoc, query, where, onSnapshot, handleFirestoreError, OperationType } from '../lib/firebase';
+import { db, doc, getDoc, collection, setDoc, updateDoc, query, where, onSnapshot, handleFirestoreError, OperationType, arrayUnion } from '../lib/firebase';
 import { User, MapPin, Phone, Globe, ArrowLeft, MessageSquare, Briefcase, Star, Loader2, Check, ExternalLink, Maximize2, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { speak } from '../lib/voice';
 
 interface SeekerProfileViewProps {
   seekerId: string;
@@ -118,6 +119,17 @@ export default function SeekerProfileView({ seekerId, onBack }: SeekerProfileVie
         createdAt: new Date().toISOString()
       };
       await setDoc(hireRef, hireData);
+
+      // Notify seeker of hire request
+      await updateDoc(doc(db, 'users', seeker.userId), {
+        notifications: arrayUnion({
+          id: `notif_hire_${Date.now()}`,
+          title: 'You Have Been Hired!',
+          message: `${user.displayName || 'Someone'} has sent you a hire request! Check your profile for details.`,
+          type: 'seeker',
+          createdAt: new Date().toISOString()
+        })
+      });
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'hires');
     } finally {
@@ -127,6 +139,9 @@ export default function SeekerProfileView({ seekerId, onBack }: SeekerProfileVie
 
   const handleNavigate = () => {
     if (!seeker?.location) return;
+    
+    speak("Navigation started. Please follow the map to reach the seeker.");
+
     const { lat, lng } = seeker.location;
     // Open in map app
     window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`, '_blank');
@@ -135,11 +150,9 @@ export default function SeekerProfileView({ seekerId, onBack }: SeekerProfileVie
     // In a real mobile app we'd use Geofencing. Here we'll just have a button "I've Arrived".
   };
 
-  const speakArrival = () => {
-    const utterance = new SpeechSynthesisUtterance("Arrived at destination");
-    utterance.pitch = 1.2; // A bit more "lady" like if possible
-    utterance.rate = 1.0;
-    window.speechSynthesis.speak(utterance);
+  const handleArrival = () => {
+    speak("You have arrived at your destination.");
+    // Additional logic for arrival could go here
   };
 
   if (loading) return <div className="flex-1 flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-gray-400" /></div>;
@@ -286,10 +299,7 @@ export default function SeekerProfileView({ seekerId, onBack }: SeekerProfileVie
                     <span>Navigate to Destination</span>
                   </button>
                   <button 
-                    onClick={() => {
-                      speakArrival();
-                      // Mark as completed in real app
-                    }}
+                    onClick={handleArrival}
                     className="w-full bg-gray-900 text-white py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center space-x-2"
                   >
                     <Check className="w-3 h-3" />

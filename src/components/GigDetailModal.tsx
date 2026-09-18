@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from './AuthProvider';
-import { db, doc, collection, setDoc, updateDoc, deleteDoc, query, where, onSnapshot, handleFirestoreError, OperationType } from '../lib/firebase';
+import { db, doc, collection, setDoc, updateDoc, deleteDoc, query, where, onSnapshot, handleFirestoreError, OperationType, arrayUnion } from '../lib/firebase';
 import { Briefcase, Clock, MapPin, X, Check, Loader2, Trash2, Send, Shield, User, Phone, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { speak } from '../lib/voice';
 
 export interface Gig {
   id: string;
@@ -130,6 +131,18 @@ export default function GigDetailModal({ gig, onClose, onGigDeleted }: GigDetail
         createdAt: new Date().toISOString()
       };
       await setDoc(appRef, appData);
+      
+      // Notify owner of new application
+      await updateDoc(doc(db, 'users', gig.providerId), {
+        notifications: arrayUnion({
+          id: `notif_app_${Date.now()}`,
+          title: 'New GiG Application!',
+          message: `${appData.applicantName} applied to your GiG: ${gig.title}`,
+          type: 'gig',
+          createdAt: new Date().toISOString()
+        })
+      });
+
       setStatusFeedback("Application submitted successfully!");
       setApplyMessage('');
     } catch (error) {
@@ -146,15 +159,39 @@ export default function GigDetailModal({ gig, onClose, onGigDeleted }: GigDetail
         updatedAt: new Date().toISOString()
       });
 
+      // Find the application details for notification
+      const app = applications.find(a => a.id === appId) || (myApplication?.id === appId ? myApplication : null);
+
+      // Voice feedback
+      if (newStatus === 'arrived') {
+        speak("You have arrived at your destination. We have notified the GiG owner of your arrival.");
+      }
+
+      // Notify seeker if owner accepted/rejected
+      if (app && isGigOwner) {
+        await updateDoc(doc(db, 'users', app.applicantId), {
+          notifications: arrayUnion({
+            id: `notif_status_${Date.now()}`,
+            title: newStatus === 'accepted' ? 'Application Accepted!' : 'Application Update',
+            message: newStatus === 'accepted' 
+              ? `Your application for "${gig.title}" has been accepted! You can now start navigation.` 
+              : `There has been an update to your application for "${gig.title}": ${newStatus}`,
+            type: 'gig',
+            createdAt: new Date().toISOString()
+          })
+        });
+      }
+
       // Notify owner if seeker arrived
-      if (newStatus === 'arrived' && myApplication) {
-        const notifRef = doc(collection(db, 'users', myApplication.gigOwnerId, 'notifications'));
-        await setDoc(notifRef, {
-          id: notifRef.id,
-          title: 'Seeker Arrived!',
-          message: `${myApplication.applicantName || 'A seeker'} has arrived at the GiG location: ${gig.title}`,
-          type: 'gig',
-          createdAt: new Date().toISOString()
+      if (newStatus === 'arrived' && app) {
+        await updateDoc(doc(db, 'users', app.gigOwnerId), {
+          notifications: arrayUnion({
+            id: `notif_arrived_${Date.now()}`,
+            title: 'Seeker Arrived!',
+            message: `${app.applicantName || 'A seeker'} has arrived at the GiG location: ${gig.title}`,
+            type: 'gig',
+            createdAt: new Date().toISOString()
+          })
         });
       }
     } catch (error) {
@@ -165,6 +202,8 @@ export default function GigDetailModal({ gig, onClose, onGigDeleted }: GigDetail
   const handleNavigate = () => {
     if (!gig.location) return;
     
+    speak("Navigation started. Please follow the map to reach the GiG destination.");
+
     navigator.geolocation.getCurrentPosition((position) => {
       const originLat = position.coords.latitude;
       const originLng = position.coords.longitude;

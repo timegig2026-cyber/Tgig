@@ -97,6 +97,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               isAdmin: isAdmin,
               createdAt: now.toISOString(),
               trialExpiresAt: trialExpiresAt,
+              hasSeenTour: false,
               lastViewedSeekers: now.toISOString(),
               lastViewedGigs: now.toISOString(),
               notifications: []

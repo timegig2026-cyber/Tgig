@@ -6,11 +6,13 @@ import ProfileView from './components/ProfileView';
 import SeekersView from './components/SeekersView';
 import SeekerProfileView from './components/SeekerProfileView';
 import NotificationsView from './components/NotificationsView';
+import GuidedTour from './components/GuidedTour';
 import { AuthProvider } from './components/AuthProvider';
 
 import { db, doc, onSnapshot, collection, query, where, limit, updateDoc, arrayUnion } from './lib/firebase';
 import { useAuth } from './components/AuthProvider';
 import { OfflineIndicator } from './components/PWAControls';
+import { speak } from './lib/voice';
 
 type ViewType = 'gigs' | 'seekers' | 'profile' | 'notifications';
 
@@ -28,11 +30,20 @@ function MainApp() {
   const [newSeekersCount, setNewSeekersCount] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const initialLoadRef = useRef(true);
+  const welcomedRef = useRef(false);
 
   // Initialize audio
   useEffect(() => {
     audioRef.current = new Audio(BEEP_SOUND);
   }, []);
+
+  // Voice welcome
+  useEffect(() => {
+    if (!showSplash && user && !welcomedRef.current) {
+      speak("Welcome to Time GiG. Your gateway to opportunities.");
+      welcomedRef.current = true;
+    }
+  }, [showSplash, user]);
 
   const playNotificationSound = () => {
     if (audioRef.current) {
@@ -113,10 +124,11 @@ function MainApp() {
   }, []);
 
   useEffect(() => {
+    // Hide splash after 5 seconds
+    const timer = setTimeout(() => setShowSplash(false), 5000);
+
     if (!user) {
-      setShowSplash(false);
-      setIsSubscribed(true);
-      return;
+      return () => clearTimeout(timer);
     }
 
     // Load branding and check subscription/trial
@@ -145,18 +157,17 @@ function MainApp() {
           setBranding(null);
         }
       }
-      // Hide splash after 5 seconds
-      const timer = setTimeout(() => setShowSplash(false), 5000);
-      return () => clearTimeout(timer);
     }, (error) => {
       console.warn("Could not load user profile for branding in App:", error);
-      setShowSplash(false);
     });
 
-    return () => unsub();
+    return () => {
+      unsub();
+      clearTimeout(timer);
+    };
   }, [user]);
 
-  if (showSplash && branding) {
+  if (showSplash) {
     return (
       <motion.div 
         initial={{ opacity: 1 }}
@@ -164,25 +175,15 @@ function MainApp() {
         className="fixed inset-0 z-[5000] bg-white flex flex-col items-center justify-center p-12 text-center"
       >
         <motion.div
-          initial={{ scale: 0.9, opacity: 0 }}
+          initial={{ scale: 0.8, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
-          transition={{ duration: 0.5, ease: "easeOut" }}
-          className="space-y-8"
+          transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+          className="space-y-4"
         >
-          <h1 
-            style={{ 
-              fontFamily: branding.fontFamily,
-              fontSize: branding.fontSize,
-              color: branding.fontColor
-            }}
-            className="font-black leading-tight"
-          >
-            GiGs
+          <h1 className="text-5xl font-black text-black tracking-tighter uppercase italic">
+            TimeGiG
           </h1>
-          <div className="w-12 h-1 bg-gray-900 mx-auto rounded-full animate-pulse" />
-          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
-            Welcome to GiGs
-          </p>
+          <div className="w-8 h-1 bg-black mx-auto rounded-full" />
         </motion.div>
       </motion.div>
     );
@@ -222,6 +223,12 @@ function MainApp() {
   return (
     <div className="flex-1 bg-white flex flex-col relative overflow-hidden">
       <OfflineIndicator />
+
+      <AnimatePresence>
+        {user && profile && !profile.hasSeenTour && !showSplash && (
+          <GuidedTour userId={user.uid} onComplete={() => {}} />
+        )}
+      </AnimatePresence>
       
       {/* Non-intrusive Subscription Guidance Banner */}
       <AnimatePresence>
@@ -281,7 +288,7 @@ function MainApp() {
           active={currentView === 'gigs'} 
           onClick={() => handleNavClick('gigs')}
           icon={<MapIcon className="w-5 h-5" />}
-          label="GiGs"
+          label="TimeGiG"
           badge={newGigsCount}
         />
         <NavButton 
