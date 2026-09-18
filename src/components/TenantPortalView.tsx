@@ -142,7 +142,6 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
 
   // Branding state
   const [branding, setBranding] = useState({
-    appName: '',
     fontFamily: 'Inter',
     fontSize: '24px',
     fontColor: '#000000'
@@ -1319,17 +1318,6 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
-                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">App Name</label>
-                      <input 
-                        type="text"
-                        value={branding.appName}
-                        onChange={(e) => setBranding({...branding, appName: e.target.value})}
-                        placeholder="e.g. My Gigs App"
-                        className="w-full bg-gray-50 border-none rounded-xl py-4 px-4 text-sm font-bold text-gray-900 focus:ring-2 focus:ring-blue-100"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
                       <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Font Family</label>
                       <select 
                         value={branding.fontFamily}
@@ -1558,7 +1546,7 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
                 }}
                 className="font-black leading-tight"
               >
-                {branding.appName || 'Your App Name'}
+                GiGs
               </h2>
               <div className="w-12 h-1 bg-blue-600 mx-auto rounded-full animate-pulse" />
               <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Welcome to your personalized experience</p>

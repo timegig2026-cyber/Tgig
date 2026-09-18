@@ -176,11 +176,11 @@ function MainApp() {
             }}
             className="font-black leading-tight"
           >
-            {branding.appName || 'TimeGig'}
+            GiGs
           </h1>
           <div className="w-12 h-1 bg-gray-900 mx-auto rounded-full animate-pulse" />
           <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
-            Welcome to {branding.appName || 'TimeGig'}
+            Welcome to GiGs
           </p>
         </motion.div>
       </motion.div>
