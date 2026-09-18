@@ -127,12 +127,13 @@ function MainApp() {
         // Trial & Subscription Logic
         const now = new Date();
         const trialActive = data.trialExpiresAt ? new Date(data.trialExpiresAt) > now : false;
+        const isMainAdmin = user.email === 'timegig2026@gmail.com';
         
         if (data.isTenantApproved) {
           const subActive = data.subscriptionActive === true;
-          setIsSubscribed(subActive || trialActive);
+          setIsSubscribed(subActive || trialActive || isMainAdmin);
 
-          if ((subActive || trialActive) && data.branding) {
+          if ((subActive || trialActive || isMainAdmin) && data.branding) {
             setBranding(data.branding);
           } else {
             setBranding(null);
@@ -140,7 +141,7 @@ function MainApp() {
         } else {
           // For Seekers
           const seekerSubActive = data.userSubscriptionActive === true;
-          setIsSubscribed(seekerSubActive || trialActive || data.isAdmin);
+          setIsSubscribed(seekerSubActive || trialActive || data.isAdmin || isMainAdmin);
           setBranding(null);
         }
       }

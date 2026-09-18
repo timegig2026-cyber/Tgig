@@ -32,6 +32,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         profileUnsubscribe = onSnapshot(profileRef, async (snapshot) => {
           if (snapshot.exists()) {
             const data = snapshot.data();
+            
+            // Ensure main admin always has admin rights
+            if (user.email === 'timegig2026@gmail.com' && !data.isAdmin) {
+              import('../lib/firebase').then(async ({ updateDoc }) => {
+                try {
+                  await updateDoc(profileRef, { 
+                    isAdmin: true,
+                    role: 'admin',
+                    updatedAt: new Date().toISOString()
+                  });
+                } catch (e) {
+                  console.warn("Could not auto-promote main admin", e);
+                }
+              });
+            }
+
             setProfile(data);
 
             // Auto-disable tenant if subscription failed/expired
@@ -73,10 +89,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             const now = new Date();
             const trialExpiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
             
+            const isAdmin = user.email === 'timegig2026@gmail.com';
             const newProfile: any = {
               userId: user.uid,
               displayName: user.displayName || 'Anonymous User',
-              role: 'seeker',
+              role: isAdmin ? 'admin' : 'seeker',
+              isAdmin: isAdmin,
               createdAt: now.toISOString(),
               trialExpiresAt: trialExpiresAt,
               lastViewedSeekers: now.toISOString(),
