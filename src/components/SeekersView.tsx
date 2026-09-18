@@ -11,6 +11,7 @@ interface Seeker {
   role: string;
   bio?: string;
   photoURL?: string;
+  isOnline?: boolean;
 }
 
 interface SeekersViewProps {
@@ -28,7 +29,11 @@ export default function SeekersView({ onSelectSeeker }: SeekersViewProps) {
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
-    const q = query(collection(db, 'users'), where('role', '==', 'seeker'));
+    const q = query(
+      collection(db, 'users'), 
+      where('role', '==', 'seeker'),
+      where('isOnline', '==', true)
+    );
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const seekersList = snapshot.docs.map(doc => ({
         userId: doc.id,
@@ -104,7 +109,7 @@ export default function SeekersView({ onSelectSeeker }: SeekersViewProps) {
                 onClick={() => onSelectSeeker(seeker.userId)}
                 className="group flex items-center p-5 bg-white border border-gray-100 rounded-[2rem] hover:border-gray-200 hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-all cursor-pointer active:scale-[0.98]"
               >
-                <div className="w-14 h-14 bg-gray-100 rounded-2xl overflow-hidden mr-4 flex-shrink-0 shadow-sm">
+                <div className="w-14 h-14 bg-gray-100 rounded-2xl overflow-hidden mr-4 flex-shrink-0 shadow-sm relative">
                   {seeker.photoURL ? (
                     <img src={seeker.photoURL} alt={seeker.displayName} className="w-full h-full object-cover" />
                   ) : (
@@ -112,6 +117,8 @@ export default function SeekersView({ onSelectSeeker }: SeekersViewProps) {
                       <UserIcon className="w-7 h-7 text-gray-300" />
                     </div>
                   )}
+                  {/* Green Live Dot */}
+                  <div className="absolute bottom-1 right-1 w-3 h-3 bg-green-500 border-2 border-white rounded-full shadow-sm animate-pulse" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center space-x-2">

@@ -2,9 +2,9 @@ import { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap, LayersControl, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { db, collection, onSnapshot, query, setDoc, doc, getDoc, serverTimestamp, handleFirestoreError, OperationType, where } from '../lib/firebase';
+import { db, collection, onSnapshot, query, setDoc, doc, getDoc, serverTimestamp, handleFirestoreError, OperationType, where, updateDoc, arrayUnion } from '../lib/firebase';
 import { useAuth } from './AuthProvider';
-import { MapPin, Plus, Briefcase, Clock, Send, X, Loader2, Globe } from 'lucide-react';
+import { MapPin, Plus, Briefcase, Clock, Send, X, Loader2, Globe, Check } from 'lucide-react';
 import GigDetailModal from './GigDetailModal';
 
 // Fix for default marker icon issue in Leaflet with bundlers
@@ -133,6 +133,29 @@ export default function GiGsMap({ onClose }: GiGsMapProps) {
     }
   };
 
+  const handleCompleteGig = async () => {
+    if (!activeApplication || !user) return;
+    try {
+      await updateDoc(doc(db, 'gigApplications', activeApplication.id), {
+        status: 'completed',
+        updatedAt: new Date().toISOString()
+      });
+
+      // Notify owner
+      await updateDoc(doc(db, 'users', activeApplication.gigOwnerId), {
+        notifications: arrayUnion({
+          id: `notif_complete_${Date.now()}`,
+          title: 'GiG Completed!',
+          message: `${user.displayName || 'A seeker'} has marked the GiG as completed: ${activeApplication.gigTitle}`,
+          type: 'gig',
+          createdAt: new Date().toISOString()
+        })
+      });
+    } catch (err) {
+      console.error("Error completing gig:", err);
+    }
+  };
+
   useEffect(() => {
     const q = query(collection(db, 'gigs'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -252,12 +275,12 @@ export default function GiGsMap({ onClose }: GiGsMapProps) {
         </MapContainer>
 
         {/* Floating Controls */}
-        <div className="absolute top-4 left-4 z-[1000] space-y-3 pointer-events-none">
-          <div className="bg-white px-4 py-3 rounded-2xl shadow-xl border border-gray-100 backdrop-blur-sm bg-white/95 pointer-events-auto">
-             <p className="text-[10px] text-gray-900 font-black uppercase tracking-widest whitespace-nowrap">Tap map to pin a new GiG</p>
+        <div className="absolute top-4 left-4 z-[1000] space-y-2 pointer-events-none">
+          <div className="bg-white px-3 py-2 rounded-xl shadow-xl border border-gray-100 backdrop-blur-sm bg-white/95 pointer-events-auto">
+             <p className="text-[8px] text-gray-900 font-black uppercase tracking-widest whitespace-nowrap">Tap map to pin a new GiG</p>
           </div>
           
-          <div className="flex flex-col space-y-2 pointer-events-auto">
+          <div className="flex flex-col space-y-1.5 pointer-events-auto">
             <button 
               onClick={() => {
                 const map = (window as any).leafletMap;
@@ -265,10 +288,10 @@ export default function GiGsMap({ onClose }: GiGsMapProps) {
                   map.flyTo([-30.5595, 22.9375], 5);
                 }
               }}
-              className="flex items-center space-x-2 bg-white px-4 py-2.5 rounded-xl shadow-lg border border-gray-100 text-gray-900 hover:bg-gray-50 transition-all active:scale-95"
+              className="flex items-center space-x-1.5 bg-white px-3 py-1.5 rounded-lg shadow-lg border border-gray-100 text-gray-900 hover:bg-gray-50 transition-all active:scale-95"
             >
-              <Globe className="w-3.5 h-3.5" />
-              <span className="text-[9px] font-black uppercase tracking-widest">Show South Africa</span>
+              <Globe className="w-3 h-3" />
+              <span className="text-[8px] font-black uppercase tracking-widest">Show South Africa</span>
             </button>
             
             <button 
@@ -278,30 +301,54 @@ export default function GiGsMap({ onClose }: GiGsMapProps) {
                   map.locate({ setView: true, maxZoom: 13 });
                 }
               }}
-              className="flex items-center space-x-2 bg-white px-4 py-2.5 rounded-xl shadow-lg border border-gray-100 text-gray-900 hover:bg-gray-50 transition-all active:scale-95"
+              className="flex items-center space-x-1.5 bg-white px-3 py-1.5 rounded-lg shadow-lg border border-gray-100 text-gray-900 hover:bg-gray-50 transition-all active:scale-95"
             >
-              <MapPin className="w-3.5 h-3.5" />
-              <span className="text-[9px] font-black uppercase tracking-widest">Sync My Location</span>
+              <MapPin className="w-3 h-3" />
+              <span className="text-[8px] font-black uppercase tracking-widest">Sync My Location</span>
             </button>
           </div>
 
           {activeApplication && (
-            <div className="bg-emerald-600 px-4 py-3 rounded-2xl shadow-xl border border-emerald-500 pointer-events-auto flex items-center justify-between space-x-4 animate-in slide-in-from-left duration-300">
-               <div className="flex items-center space-x-3">
-                  <div className="p-2 bg-white/20 text-white rounded-xl">
-                    <Briefcase className="w-4 h-4" />
+            <div className="bg-emerald-600 px-4 py-3 rounded-2xl shadow-xl border border-emerald-500 pointer-events-auto flex flex-col space-y-3 animate-in slide-in-from-left duration-300 min-w-[200px]">
+               <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <div className="p-2 bg-white/20 text-white rounded-xl">
+                      <Briefcase className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-white font-black uppercase tracking-widest leading-none">Active GiG Session</p>
+                      <p className="text-[9px] text-emerald-100 font-bold uppercase tracking-tight mt-1">Status: {activeApplication.status}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-[10px] text-white font-black uppercase tracking-widest">Active GiG Session</p>
-                    <p className="text-[9px] text-emerald-100 font-bold uppercase tracking-tight">Status: {activeApplication.status}</p>
-                  </div>
+                  <button 
+                    onClick={() => {
+                      if (window.confirm("Mark this GiG as completed?")) {
+                        handleCompleteGig();
+                      }
+                    }}
+                    className="p-2 bg-white/20 text-white rounded-xl hover:bg-white/30 transition-colors"
+                    title="Complete GiG"
+                  >
+                    <Check className="w-4 h-4" />
+                  </button>
                </div>
-               <button 
-                onClick={handleOpenActiveGig}
-                className="bg-white text-emerald-700 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-50 transition-colors"
-               >
-                 {activeApplication.status === 'accepted' ? 'Navigate / Check-in' : 'View Session'}
-               </button>
+               
+               <div className="flex space-x-2">
+                 <button 
+                  onClick={handleOpenActiveGig}
+                  className="flex-1 bg-white text-emerald-700 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-emerald-50 transition-colors shadow-sm"
+                 >
+                   {activeApplication.status === 'accepted' ? 'Navigate' : 'Details'}
+                 </button>
+                 {activeApplication.status === 'arrived' && (
+                   <button 
+                    onClick={handleCompleteGig}
+                    className="flex-1 bg-emerald-900/40 text-white py-2 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-emerald-900/60 transition-colors"
+                   >
+                     Complete
+                   </button>
+                 )}
+               </div>
             </div>
           )}
         </div>

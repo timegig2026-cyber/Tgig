@@ -41,7 +41,7 @@ service cloud.firestore {
     function isValidUserProfile(data) {
       return (!('userId' in data) || (data.userId is string && data.userId.size() <= 128)) &&
              (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 100)) &&
-             (!('role' in data) || (data.role in ['seeker', 'provider'])) &&
+             (!('role' in data) || (data.role in ['seeker', 'provider', 'admin'])) &&
              (!('createdAt' in data) || (data.createdAt is string)) &&
              (!('updatedAt' in data) || (data.updatedAt is string)) &&
              (!('firstName' in data) || (data.firstName is string && data.firstName.size() <= 100)) &&
@@ -70,6 +70,8 @@ service cloud.firestore {
              (!('lastViewedSeekers' in data) || (data.lastViewedSeekers is string)) &&
              (!('lastViewedGigs' in data) || (data.lastViewedGigs is string)) &&
              (!('notifications' in data) || (data.notifications is list)) &&
+             (!('isOnline' in data) || (data.isOnline is bool)) &&
+             (!('lastActive' in data) || (data.lastActive is string)) &&
              (!('bankDetails' in data) || (data.bankDetails is map));
     }
 
@@ -82,6 +84,10 @@ service cloud.firestore {
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isTenantApproved', 'isTenantRequest', 'isTenantDisabled', 'subscriptionActive', 'subscriptionExpiresAt', 'updatedAt']);
       allow update: if isSignedIn() && resource.data.get('tenantId', '') == request.auth.uid &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['tenantApproved', 'userSubscriptionActive', 'userSubscriptionExpiresAt', 'updatedAt']);
+      // Allow any user to send a notification
+      allow update: if isSignedIn() && 
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['notifications']) &&
+        request.resource.data.notifications.size() > resource.data.get('notifications', []).size();
     }
 
     // --- Gigs ---

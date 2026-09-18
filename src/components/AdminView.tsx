@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { db, collection, query, onSnapshot, updateDoc, doc } from '../lib/firebase';
+import { db, collection, query, onSnapshot, updateDoc, doc, setDoc } from '../lib/firebase';
 import { useAuth } from './AuthProvider';
 import { calculateAdminFee, downloadTenantAgreement } from '../lib/utils';
 import { 
@@ -73,7 +73,7 @@ export default function AdminView({ onClose }: AdminViewProps) {
   const [lastError, setLastError] = useState<string | null>(null);
   const [successToast, setSuccessToast] = useState<string | null>(null);
 
-  // Tenant limit configuration (default 1000 max until admin decides otherwise)
+  // Tenant limit configuration
   const [tenantCap, setTenantCap] = useState<number>(DEFAULT_TENANT_CAP);
   const [showCapModal, setShowCapModal] = useState<boolean>(false);
   const [newCapInput, setNewCapInput] = useState<string>(String(DEFAULT_TENANT_CAP));
@@ -84,6 +84,17 @@ export default function AdminView({ onClose }: AdminViewProps) {
       setLoading(false);
       return;
     }
+
+    // Load settings
+    const unsubSettings = onSnapshot(doc(db, 'settings', 'admin'), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (data.tenantCap) {
+          setTenantCap(data.tenantCap);
+          setNewCapInput(String(data.tenantCap));
+        }
+      }
+    });
 
     // Listen to users
     const q = query(collection(db, 'users'));
@@ -124,6 +135,7 @@ export default function AdminView({ onClose }: AdminViewProps) {
     });
 
     return () => {
+      unsubSettings();
       unsubscribeUsers();
       unsubscribeSubs();
       unsubscribePayments();
@@ -256,15 +268,27 @@ export default function AdminView({ onClose }: AdminViewProps) {
   };
 
   // Update tenant capacity limit (admin decides)
-  const handleSaveTenantCap = () => {
+  const handleSaveTenantCap = async () => {
     const num = parseInt(newCapInput, 10);
     if (isNaN(num) || num < 1) {
       alert("Please enter a valid positive number for tenant capacity.");
       return;
     }
-    setTenantCap(num);
-    setShowCapModal(false);
-    showNotification(`Tenant capacity updated to ${num.toLocaleString()} maximum tenants.`);
+    
+    try {
+      await setDoc(doc(db, 'settings', 'admin'), {
+        tenantCap: num,
+        updatedAt: new Date().toISOString(),
+        updatedBy: user?.uid
+      }, { merge: true });
+      
+      setTenantCap(num);
+      setShowCapModal(false);
+      showNotification(`Tenant capacity updated to ${num.toLocaleString()} maximum tenants.`);
+    } catch (error: any) {
+      console.error("Error saving tenant cap", error);
+      alert("Failed to save capacity limit: " + error.message);
+    }
   };
 
   // Helper to compute stats for each tenant

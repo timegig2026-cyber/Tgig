@@ -1,5 +1,5 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { auth, onAuthStateChanged, User, doc, getDoc, setDoc, db, serverTimestamp, handleFirestoreError, OperationType, onSnapshot } from '../lib/firebase';
+import { createContext, useContext, useEffect, useState, ReactNode, useRef } from 'react';
+import { auth, onAuthStateChanged, User, doc, getDoc, setDoc, updateDoc, db, serverTimestamp, handleFirestoreError, OperationType, onSnapshot } from '../lib/firebase';
 
 interface AuthContextType {
   user: User | null;
@@ -11,30 +11,57 @@ const AuthContext = createContext<AuthContextType>({ user: null, profile: null, 
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const userRef = useRef<User | null>(null);
   const [profile, setProfile] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let profileUnsubscribe: (() => void) | null = null;
+    let heartbeatInterval: any = null;
 
-    const authUnsubscribe = onAuthStateChanged(auth, async (user) => {
-      setUser(user);
+    const authUnsubscribe = onAuthStateChanged(auth, async (newUser) => {
+      setUser(newUser);
+      userRef.current = newUser;
       
       if (profileUnsubscribe) {
         profileUnsubscribe();
         profileUnsubscribe = null;
       }
 
-      if (user) {
-        const profileRef = doc(db, 'users', user.uid);
+      if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+        heartbeatInterval = null;
+      }
+
+      if (newUser) {
+        const profileRef = doc(db, 'users', newUser.uid);
         
+        // Update online status
+        const updateOnlineStatus = async (status: boolean) => {
+          try {
+            await updateDoc(profileRef, { 
+              isOnline: status,
+              lastActive: new Date().toISOString()
+            });
+          } catch (e) {
+            console.warn("Could not update online status", e);
+          }
+        };
+
+        updateOnlineStatus(true);
+
+        // Heartbeat to keep online status fresh
+        heartbeatInterval = setInterval(() => {
+          updateOnlineStatus(true);
+        }, 60000); // every minute
+
         // Use onSnapshot for real-time profile updates
         profileUnsubscribe = onSnapshot(profileRef, async (snapshot) => {
           if (snapshot.exists()) {
             const data = snapshot.data();
             
             // Ensure main admin always has admin rights
-            if (user.email === 'timegig2026@gmail.com' && !data.isAdmin) {
+            if (newUser.email === 'timegig2026@gmail.com' && !data.isAdmin) {
               import('../lib/firebase').then(async ({ updateDoc }) => {
                 try {
                   await updateDoc(profileRef, { 
@@ -69,7 +96,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
 
             const tenantRef = typeof window !== 'undefined' ? (localStorage.getItem('tenant_ref') || '') : '';
-            if (tenantRef && tenantRef !== user.uid && !data.tenantId && !data.isTenantApproved && !data.isAdmin) {
+            if (tenantRef && tenantRef !== newUser.uid && !data.tenantId && !data.isTenantApproved && !data.isAdmin) {
               import('../lib/firebase').then(async ({ updateDoc }) => {
                 try {
                   await updateDoc(profileRef, {
@@ -89,10 +116,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             const now = new Date();
             const trialExpiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
             
-            const isAdmin = user.email === 'timegig2026@gmail.com';
+            const isAdmin = newUser.email === 'timegig2026@gmail.com';
             const newProfile: any = {
-              userId: user.uid,
-              displayName: user.displayName || 'Anonymous User',
+              userId: newUser.uid,
+              displayName: newUser.displayName || 'Anonymous User',
               role: isAdmin ? 'admin' : 'seeker',
               isAdmin: isAdmin,
               createdAt: now.toISOString(),
@@ -102,7 +129,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               lastViewedGigs: now.toISOString(),
               notifications: []
             };
-            if (tenantRef && tenantRef !== user.uid) {
+            if (tenantRef && tenantRef !== newUser.uid) {
               newProfile.tenantId = tenantRef;
               newProfile.tenantApproved = false;
               newProfile.userSubscriptionActive = false;
@@ -110,12 +137,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             try {
               await setDoc(profileRef, newProfile);
             } catch (error) {
-              handleFirestoreError(error, OperationType.CREATE, `users/${user.uid}`);
+              handleFirestoreError(error, OperationType.CREATE, `users/${newUser.uid}`);
             }
           }
           setLoading(false);
         }, (error) => {
-          handleFirestoreError(error, OperationType.GET, `users/${user.uid}`);
+          handleFirestoreError(error, OperationType.GET, `users/${newUser.uid}`);
         });
       } else {
         setProfile(null);
@@ -126,6 +153,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       authUnsubscribe();
       if (profileUnsubscribe) profileUnsubscribe();
+      if (heartbeatInterval) clearInterval(heartbeatInterval);
+      
+      // Attempt to set offline status on unmount if we have a user
+      if (userRef.current) {
+        const profileRef = doc(db, 'users', userRef.current.uid);
+        updateDoc(profileRef, { isOnline: false }).catch(() => {});
+      }
     };
   }, []);
 

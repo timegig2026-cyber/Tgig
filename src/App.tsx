@@ -29,7 +29,6 @@ function MainApp() {
   const [newGigsCount, setNewGigsCount] = useState(0);
   const [newSeekersCount, setNewSeekersCount] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const initialLoadRef = useRef(true);
   const welcomedRef = useRef(false);
 
   // Initialize audio
@@ -55,10 +54,18 @@ function MainApp() {
   useEffect(() => {
     if (!user || !profile) return;
 
+    let initialGigs = true;
+    let initialSeekers = true;
+    let initialOnline = true;
+
     // Listen for new Gigs
     const gigsQuery = query(collection(db, 'gigs'), where('createdAt', '>', profile.lastViewedGigs || new Date(0).toISOString()));
     const unsubGigs = onSnapshot(gigsQuery, (snapshot) => {
-      if (!initialLoadRef.current && !snapshot.empty) {
+      if (initialGigs) {
+        initialGigs = false;
+        return;
+      }
+      if (!snapshot.empty) {
         const newDocs = snapshot.docChanges().filter(c => c.type === 'added');
         if (newDocs.length > 0) {
           setNewGigsCount(prev => prev + newDocs.length);
@@ -82,7 +89,11 @@ function MainApp() {
     // Listen for new Seekers
     const seekersQuery = query(collection(db, 'users'), where('role', '==', 'seeker'), where('createdAt', '>', profile.lastViewedSeekers || new Date(0).toISOString()));
     const unsubSeekers = onSnapshot(seekersQuery, (snapshot) => {
-      if (!initialLoadRef.current && !snapshot.empty) {
+      if (initialSeekers) {
+        initialSeekers = false;
+        return;
+      }
+      if (!snapshot.empty) {
         const newDocs = snapshot.docChanges().filter(c => c.type === 'added');
         if (newDocs.length > 0) {
           setNewSeekersCount(prev => prev + newDocs.length);
@@ -101,12 +112,25 @@ function MainApp() {
           });
         }
       }
-      initialLoadRef.current = false;
+    });
+
+    // Listen for Online Seekers
+    const onlineSeekersQuery = query(collection(db, 'users'), where('role', '==', 'seeker'), where('isOnline', '==', true));
+    const unsubOnline = onSnapshot(onlineSeekersQuery, (snapshot) => {
+      if (initialOnline) {
+        initialOnline = false;
+        return;
+      }
+      const onlineAdditions = snapshot.docChanges().filter(c => c.type === 'added');
+      if (onlineAdditions.length > 0) {
+        playNotificationSound();
+      }
     });
 
     return () => {
       unsubGigs();
       unsubSeekers();
+      unsubOnline();
     };
   }, [user, profile?.lastViewedGigs, profile?.lastViewedSeekers]);
 
@@ -172,18 +196,32 @@ function MainApp() {
       <motion.div 
         initial={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[5000] bg-white flex flex-col items-center justify-center p-12 text-center"
+        className="fixed inset-0 z-[5000] bg-white flex flex-col items-center justify-center p-12 text-center overflow-hidden"
       >
+        {/* Blurry Map Wallpaper Background */}
+        <div 
+          className="absolute inset-0 opacity-20 scale-110"
+          style={{
+            backgroundImage: `url('https://images.unsplash.com/photo-1526778548025-fa2f459cd5c1?auto=format&fit=crop&q=80&w=2000')`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            filter: 'blur(12px)'
+          }}
+        />
+        
         <motion.div
           initial={{ scale: 0.8, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
-          className="space-y-4"
+          className="relative z-10 space-y-4"
         >
-          <h1 className="text-5xl font-black text-black tracking-tighter uppercase italic">
+          <h1 className="text-6xl font-black text-black tracking-tighter uppercase italic drop-shadow-sm">
             TimeGiG
           </h1>
-          <div className="w-8 h-1 bg-black mx-auto rounded-full" />
+          <div className="w-12 h-1.5 bg-black mx-auto rounded-full" />
+          <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.3em] mt-4">
+            Instant Opportunities
+          </p>
         </motion.div>
       </motion.div>
     );
