@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap, LayersControl, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { db, collection, onSnapshot, query, setDoc, doc, serverTimestamp, handleFirestoreError, OperationType } from '../lib/firebase';
+import { db, collection, onSnapshot, query, setDoc, doc, getDoc, serverTimestamp, handleFirestoreError, OperationType, where } from '../lib/firebase';
 import { useAuth } from './AuthProvider';
 import { MapPin, Plus, Briefcase, Clock, Send, X, Loader2, Globe } from 'lucide-react';
 import GigDetailModal from './GigDetailModal';
@@ -95,9 +95,43 @@ export default function GiGsMap({ onClose }: GiGsMapProps) {
   const [newGigDesc, setNewGigDesc] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [clickLocation, setClickLocation] = useState<[number, number] | null>(null);
+  const [activeApplication, setActiveApplication] = useState<any | null>(null);
 
   // South Africa coordinates
   const southAfricaCenter: [number, number] = [-30.5595, 22.9375];
+
+  useEffect(() => {
+    if (!user) {
+      setActiveApplication(null);
+      return;
+    }
+    const q = query(
+      collection(db, 'gigApplications'),
+      where('applicantId', '==', user.uid),
+      where('status', 'in', ['accepted', 'arrived'])
+    );
+    const unsub = onSnapshot(q, (snapshot) => {
+      if (!snapshot.empty) {
+        const appData = snapshot.docs[0].data();
+        setActiveApplication({ id: snapshot.docs[0].id, ...appData });
+      } else {
+        setActiveApplication(null);
+      }
+    });
+    return unsub;
+  }, [user]);
+
+  const handleOpenActiveGig = async () => {
+    if (!activeApplication) return;
+    try {
+      const gigDoc = await getDoc(doc(db, 'gigs', activeApplication.gigId));
+      if (gigDoc.exists()) {
+        setSelectedGig({ id: gigDoc.id, ...gigDoc.data() } as Gig);
+      }
+    } catch (err) {
+      console.warn("Could not open active gig detail", err);
+    }
+  };
 
   useEffect(() => {
     const q = query(collection(db, 'gigs'));
@@ -250,6 +284,26 @@ export default function GiGsMap({ onClose }: GiGsMapProps) {
               <span className="text-[9px] font-black uppercase tracking-widest">Sync My Location</span>
             </button>
           </div>
+
+          {activeApplication && (
+            <div className="bg-emerald-600 px-4 py-3 rounded-2xl shadow-xl border border-emerald-500 pointer-events-auto flex items-center justify-between space-x-4 animate-in slide-in-from-left duration-300">
+               <div className="flex items-center space-x-3">
+                  <div className="p-2 bg-white/20 text-white rounded-xl">
+                    <Briefcase className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-white font-black uppercase tracking-widest">Active GiG Session</p>
+                    <p className="text-[9px] text-emerald-100 font-bold uppercase tracking-tight">Status: {activeApplication.status}</p>
+                  </div>
+               </div>
+               <button 
+                onClick={handleOpenActiveGig}
+                className="bg-white text-emerald-700 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-50 transition-colors"
+               >
+                 {activeApplication.status === 'accepted' ? 'Navigate / Check-in' : 'View Session'}
+               </button>
+            </div>
+          )}
         </div>
       </div>
 

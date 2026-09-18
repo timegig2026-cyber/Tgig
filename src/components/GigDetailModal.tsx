@@ -24,7 +24,7 @@ export interface GigApplication {
   applicantPhotoURL?: string;
   applicantPhone?: string;
   message?: string;
-  status: 'pending' | 'accepted' | 'rejected';
+  status: 'pending' | 'accepted' | 'rejected' | 'arrived' | 'completed';
   createdAt: string;
   updatedAt?: string;
 }
@@ -139,15 +139,49 @@ export default function GigDetailModal({ gig, onClose, onGigDeleted }: GigDetail
     }
   };
 
-  const handleUpdateStatus = async (appId: string, newStatus: 'accepted' | 'rejected') => {
+  const handleUpdateStatus = async (appId: string, newStatus: 'accepted' | 'rejected' | 'arrived' | 'completed') => {
     try {
       await updateDoc(doc(db, 'gigApplications', appId), {
         status: newStatus,
         updatedAt: new Date().toISOString()
       });
+
+      // Notify owner if seeker arrived
+      if (newStatus === 'arrived' && myApplication) {
+        const notifRef = doc(collection(db, 'users', myApplication.gigOwnerId, 'notifications'));
+        await setDoc(notifRef, {
+          id: notifRef.id,
+          title: 'Seeker Arrived!',
+          message: `${myApplication.applicantName || 'A seeker'} has arrived at the GiG location: ${gig.title}`,
+          type: 'gig',
+          createdAt: new Date().toISOString()
+        });
+      }
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `gigApplications/${appId}`);
     }
+  };
+
+  const handleNavigate = () => {
+    if (!gig.location) return;
+    
+    navigator.geolocation.getCurrentPosition((position) => {
+      const originLat = position.coords.latitude;
+      const originLng = position.coords.longitude;
+      const destLat = gig.location.lat;
+      const destLng = gig.location.lng;
+      
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      const url = isIOS 
+        ? `http://maps.apple.com/?saddr=${originLat},${originLng}&daddr=${destLat},${destLng}`
+        : `https://www.google.com/maps/dir/?api=1&origin=${originLat},${originLng}&destination=${destLat},${destLng}&travelmode=driving`;
+        
+      window.open(url, '_blank');
+    }, (err) => {
+      console.warn("Geolocation failed, using destination only", err);
+      const url = `https://www.google.com/maps/dir/?api=1&destination=${gig.location.lat},${gig.location.lng}`;
+      window.open(url, '_blank');
+    });
   };
 
   const handleDeleteGig = async () => {
@@ -349,23 +383,62 @@ export default function GigDetailModal({ gig, onClose, onGigDeleted }: GigDetail
               </div>
             ) : myApplication ? (
               /* ALREADY APPLIED VIEW */
-              <div className="p-5 bg-emerald-50 border border-emerald-200 rounded-2xl space-y-3">
-                <div className="flex items-center space-x-2">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                  <h4 className="text-xs font-black text-emerald-900 uppercase tracking-wider">
-                    Application Submitted
-                  </h4>
+              <div className="p-5 bg-emerald-50 border border-emerald-200 rounded-2xl space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    {myApplication.status === 'accepted' ? (
+                      <CheckCircle2 className="w-5 h-5 text-blue-600" />
+                    ) : myApplication.status === 'arrived' ? (
+                      <MapPin className="w-5 h-5 text-emerald-600" />
+                    ) : (
+                      <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                    )}
+                    <h4 className={`text-xs font-black uppercase tracking-wider ${
+                      myApplication.status === 'accepted' ? 'text-blue-900' : 'text-emerald-900'
+                    }`}>
+                      {myApplication.status === 'accepted' ? 'GiG Accepted!' : 
+                       myApplication.status === 'arrived' ? 'Arrived at GiG' :
+                       'Application Submitted'}
+                    </h4>
+                  </div>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">
+                    {myApplication.status}
+                  </span>
                 </div>
-                <p className="text-xs text-emerald-800 font-medium">
-                  You have applied to this GiG. Status: <strong className="uppercase font-black">{myApplication.status}</strong>
-                </p>
+
+                {myApplication.status === 'accepted' && (
+                  <div className="space-y-3">
+                    <button
+                      onClick={handleNavigate}
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl flex items-center justify-center space-x-2 transition-all active:scale-[0.98]"
+                    >
+                      <MapPin className="w-4 h-4" />
+                      <span>Navigate to GiG Destination</span>
+                    </button>
+                    <button
+                      onClick={() => handleUpdateStatus(myApplication.id, 'arrived')}
+                      className="w-full bg-gray-900 hover:bg-gray-800 text-white py-3 rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center space-x-2 transition-all"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      <span>I've Arrived at Site</span>
+                    </button>
+                  </div>
+                )}
+
+                {myApplication.status === 'arrived' && (
+                  <div className="p-4 bg-white/80 rounded-xl border border-emerald-100 space-y-2">
+                    <p className="text-xs text-emerald-800 font-bold">You have checked in at the location.</p>
+                    <p className="text-[10px] text-gray-500 font-medium italic">Please wait for the GiG owner to initiate the work or contact you.</p>
+                  </div>
+                )}
+
                 {myApplication.message && (
                   <p className="text-xs text-gray-600 font-medium italic bg-white/80 p-3 rounded-xl border border-emerald-100">
                     "{myApplication.message}"
                   </p>
                 )}
                 <p className="text-[10px] text-emerald-700 font-bold">
-                  Submitted on {new Date(myApplication.createdAt).toLocaleDateString()}
+                  Last updated {new Date(myApplication.updatedAt || myApplication.createdAt).toLocaleString()}
                 </p>
               </div>
             ) : (

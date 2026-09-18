@@ -1,6 +1,6 @@
 import { useAuth } from './AuthProvider';
-import { auth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, updateProfile, db, doc, updateDoc, setDoc, collection, query, where, onSnapshot, handleFirestoreError, OperationType } from '../lib/firebase';
-import { User as UserIcon, LogOut, LogIn, Share2, Check, Mail, Lock, UserPlus, Camera, Loader2, Edit3, MapPin, ShieldCheck, TrendingUp, CreditCard, Upload, CheckCircle2, Clock, AlertCircle, Building2, Download } from 'lucide-react';
+import { auth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, updateProfile, db, doc, updateDoc, setDoc, getDoc, collection, query, where, onSnapshot, handleFirestoreError, OperationType } from '../lib/firebase';
+import { User as UserIcon, LogOut, LogIn, Share2, Check, Mail, Lock, UserPlus, Camera, Loader2, Edit3, MapPin, ShieldCheck, TrendingUp, CreditCard, Upload, CheckCircle2, Clock, AlertCircle, Building2, Download, Briefcase } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { motion } from 'motion/react';
 import ProfileEdit from './ProfileEdit';
@@ -56,6 +56,63 @@ export default function ProfileView() {
       branchCode?: string;
     }
   } | null>(null);
+  const [activeGigs, setActiveGigs] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!user) return;
+    const q = query(
+      collection(db, 'gigApplications'),
+      where('applicantId', '==', user.uid),
+      where('status', 'in', ['accepted', 'arrived'])
+    );
+    const unsub = onSnapshot(q, async (snapshot) => {
+      const apps = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      // Fetch gig details for each active application
+      const gigsWithDetails = await Promise.all(apps.map(async (app: any) => {
+        const gigDoc = await getDoc(doc(db, 'gigs', app.gigId));
+        return { ...app, gig: gigDoc.exists() ? { id: gigDoc.id, ...gigDoc.data() } : null };
+      }));
+      setActiveGigs(gigsWithDetails.filter(g => g.gig !== null));
+    }, (err) => {
+      console.warn("Could not listen to active seeker gigs", err);
+    });
+    return () => unsub();
+  }, [user]);
+
+  const handleNavigateToGig = (gig: any) => {
+    if (!gig.location) return;
+    navigator.geolocation.getCurrentPosition((position) => {
+      const originLat = position.coords.latitude;
+      const originLng = position.coords.longitude;
+      const destLat = gig.location.lat;
+      const destLng = gig.location.lng;
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      const url = isIOS 
+        ? `http://maps.apple.com/?saddr=${originLat},${originLng}&daddr=${destLat},${destLng}`
+        : `https://www.google.com/maps/dir/?api=1&origin=${originLat},${originLng}&destination=${destLat},${destLng}&travelmode=driving`;
+      window.open(url, '_blank');
+    });
+  };
+
+  const handleArrival = async (appId: string, gigOwnerId: string, gigTitle: string, applicantName: string) => {
+    try {
+      await updateDoc(doc(db, 'gigApplications', appId), {
+        status: 'arrived',
+        updatedAt: new Date().toISOString()
+      });
+      // Notify owner
+      const notifRef = doc(collection(db, 'users', gigOwnerId, 'notifications'));
+      await setDoc(notifRef, {
+        id: notifRef.id,
+        title: 'Seeker Arrived!',
+        message: `${applicantName} has arrived at your GiG: ${gigTitle}`,
+        type: 'gig',
+        createdAt: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("Failed to mark arrival", error);
+    }
+  };
 
   useEffect(() => {
     if (!profile?.tenantId) {
@@ -492,6 +549,56 @@ export default function ProfileView() {
       {error && (
         <div className="p-3 bg-red-50 text-red-600 text-xs font-bold rounded-xl border border-red-100">
           {error}
+        </div>
+      )}
+
+      {/* Active GiGs Section for Seekers */}
+      {activeGigs.length > 0 && (
+        <div className="bg-white rounded-2xl p-6 border-2 border-emerald-100 shadow-sm space-y-4">
+          <div className="flex items-center space-x-2">
+            <Briefcase className="w-5 h-5 text-emerald-600" />
+            <h3 className="text-xs font-black text-gray-900 uppercase tracking-widest">Active GiG Navigation</h3>
+          </div>
+          <div className="space-y-3">
+            {activeGigs.map((active) => (
+              <div key={active.id} className="p-4 bg-gray-50 border border-gray-100 rounded-2xl space-y-3">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h4 className="text-sm font-black text-gray-900">{active.gig?.title || 'Unknown GiG'}</h4>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Status: {active.status}</p>
+                  </div>
+                  <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${
+                    active.status === 'accepted' ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700'
+                  }`}>
+                    {active.status}
+                  </span>
+                </div>
+
+                {active.status === 'accepted' ? (
+                  <div className="grid grid-cols-2 gap-2">
+                    <button 
+                      onClick={() => handleNavigateToGig(active.gig)}
+                      className="bg-blue-600 text-white py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center space-x-1"
+                    >
+                      <MapPin className="w-3 h-3" />
+                      <span>Navigate</span>
+                    </button>
+                    <button 
+                      onClick={() => handleArrival(active.id, active.gigOwnerId, active.gig?.title || 'GiG', profile?.displayName || 'Seeker')}
+                      className="bg-gray-900 text-white py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center space-x-1"
+                    >
+                      <Check className="w-3 h-3" />
+                      <span>Arrived</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-xl text-center">
+                    <p className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">You have arrived at this GiG</p>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
