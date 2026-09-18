@@ -31,6 +31,10 @@
         "isAdmin": { "type": "boolean", "description": "Whether the user is an administrator." },
         "subscriptionActive": { "type": "boolean", "description": "Whether the tenant subscription is active." },
         "subscriptionExpiresAt": { "type": "string", "format": "date-time", "description": "When the tenant subscription expires." },
+        "tenantId": { "type": "string", "description": "The ID of the tenant whose link the user joined through." },
+        "tenantApproved": { "type": "boolean", "description": "Whether the tenant has approved this user." },
+        "userSubscriptionActive": { "type": "boolean", "description": "Whether the user's monthly subscription to the tenant is active." },
+        "userSubscriptionExpiresAt": { "type": "string", "format": "date-time", "description": "Expiry date of the user's monthly subscription to the tenant." },
         "branding": {
           "type": "object",
           "properties": {

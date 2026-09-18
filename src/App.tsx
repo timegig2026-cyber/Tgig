@@ -20,6 +20,19 @@ function MainApp() {
   const [showSplash, setShowSplash] = useState(true);
   const [isSubscribed, setIsSubscribed] = useState(true);
 
+  // Capture tenant referral link from URL
+  useEffect(() => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const tenantRef = urlParams.get('tenant') || urlParams.get('ref') || urlParams.get('tenantId');
+      if (tenantRef) {
+        localStorage.setItem('tenant_ref', tenantRef);
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, []);
+
   useEffect(() => {
     if (!user) {
       setShowSplash(false);

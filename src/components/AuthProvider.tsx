@@ -31,15 +31,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Use onSnapshot for real-time profile updates
         profileUnsubscribe = onSnapshot(profileRef, async (snapshot) => {
           if (snapshot.exists()) {
-            setProfile(snapshot.data());
+            const data = snapshot.data();
+            setProfile(data);
+            const tenantRef = typeof window !== 'undefined' ? (localStorage.getItem('tenant_ref') || '') : '';
+            if (tenantRef && tenantRef !== user.uid && !data.tenantId && !data.isTenantApproved && !data.isAdmin) {
+              import('../lib/firebase').then(async ({ updateDoc }) => {
+                try {
+                  await updateDoc(profileRef, {
+                    tenantId: tenantRef,
+                    tenantApproved: false,
+                    userSubscriptionActive: false,
+                    updatedAt: new Date().toISOString()
+                  });
+                } catch (e) {
+                  console.warn("Could not associate existing user with tenant link", e);
+                }
+              });
+            }
           } else {
             // Create initial profile if it doesn't exist
-            const newProfile = {
+            const tenantRef = typeof window !== 'undefined' ? (localStorage.getItem('tenant_ref') || '') : '';
+            const newProfile: any = {
               userId: user.uid,
               displayName: user.displayName || 'Anonymous User',
               role: 'seeker',
               createdAt: new Date().toISOString(),
             };
+            if (tenantRef && tenantRef !== user.uid) {
+              newProfile.tenantId = tenantRef;
+              newProfile.tenantApproved = false;
+              newProfile.userSubscriptionActive = false;
+            }
             try {
               await setDoc(profileRef, newProfile);
             } catch (error) {

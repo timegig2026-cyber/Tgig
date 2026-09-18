@@ -1,6 +1,6 @@
 import { useAuth } from './AuthProvider';
-import { auth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, updateProfile, db, doc, updateDoc, handleFirestoreError, OperationType } from '../lib/firebase';
-import { User as UserIcon, LogOut, LogIn, Share2, Check, Mail, Lock, UserPlus, Camera, Loader2, Edit3, MapPin, ShieldCheck, TrendingUp, CreditCard } from 'lucide-react';
+import { auth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, updateProfile, db, doc, updateDoc, setDoc, collection, query, where, onSnapshot, handleFirestoreError, OperationType } from '../lib/firebase';
+import { User as UserIcon, LogOut, LogIn, Share2, Check, Mail, Lock, UserPlus, Camera, Loader2, Edit3, MapPin, ShieldCheck, TrendingUp, CreditCard, Upload, CheckCircle2, Clock, AlertCircle } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { motion } from 'motion/react';
 import ProfileEdit from './ProfileEdit';
@@ -39,6 +39,89 @@ export default function ProfileView() {
   const [tenantPortalTab, setTenantPortalTab] = useState<'overview' | 'pop' | 'branding' | 'subscription'>('overview');
   const [showAdminPortal, setShowAdminPortal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [tenantPayments, setTenantPayments] = useState<any[]>([]);
+  const [uploadingTenantPop, setUploadingTenantPop] = useState(false);
+  const [tenantPopSuccess, setTenantPopSuccess] = useState(false);
+  const tenantPopInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!user || !profile?.tenantId) return;
+    const q = query(
+      collection(db, 'payments'),
+      where('userId', '==', user.uid),
+      where('tenantId', '==', profile.tenantId)
+    );
+    const unsub = onSnapshot(q, (snapshot) => {
+      const list = snapshot.docs.map(doc => ({
+        paymentId: doc.id,
+        ...doc.data()
+      }));
+      setTenantPayments(list);
+    }, (err) => {
+      console.warn("Could not listen to tenant payments", err);
+    });
+    return () => unsub();
+  }, [user, profile?.tenantId]);
+
+  const handleUploadTenantPop = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user || !profile?.tenantId) return;
+
+    setUploadingTenantPop(true);
+    setError('');
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = async () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        const maxDim = 800;
+        if (width > height && width > maxDim) {
+          height = (height * maxDim) / width;
+          width = maxDim;
+        } else if (height > maxDim) {
+          width = (width * maxDim) / height;
+          height = maxDim;
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+        const base64String = canvas.toDataURL('image/jpeg', 0.7);
+
+        try {
+          const paymentId = `pay_${Date.now()}`;
+          await setDoc(doc(db, 'payments', paymentId), {
+            paymentId,
+            userId: user.uid,
+            tenantId: profile.tenantId,
+            userDisplayName: profile.displayName || user.displayName || 'Member',
+            userPhotoURL: profile.photoURL || '',
+            proofImage: base64String,
+            amount: 99.00,
+            status: 'pending',
+            createdAt: new Date().toISOString()
+          });
+
+          setTenantPopSuccess(true);
+          setTimeout(() => setTenantPopSuccess(false), 7000);
+        } catch (err: any) {
+          console.error("Error submitting PoP to tenant", err);
+          setError(`Proof of payment submission failed: ${err.message}`);
+        } finally {
+          setUploadingTenantPop(false);
+        }
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.onerror = () => {
+      setError(`Failed to read proof file`);
+      setUploadingTenantPop(false);
+    };
+    reader.readAsDataURL(file);
+  };
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -515,6 +598,104 @@ export default function ProfileView() {
           </div>
         </div>
       </div>
+
+      {/* Tenant Network Membership & Monthly Subscription for Referred Users */}
+      {profile?.tenantId && (
+        <div className="bg-white rounded-2xl p-6 border-2 border-blue-100 shadow-sm space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <TrendingUp className="w-5 h-5 text-blue-600" />
+              <div>
+                <h3 className="text-xs font-black text-gray-900 uppercase tracking-widest">
+                  Tenant Member Subscription
+                </h3>
+                <p className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">
+                  Joined via Tenant Referral Link
+                </p>
+              </div>
+            </div>
+
+            <div>
+              {profile?.tenantApproved || profile?.userSubscriptionActive ? (
+                <span className="inline-flex items-center space-x-1 bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider">
+                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                  <span>Active & Approved</span>
+                </span>
+              ) : (
+                <span className="inline-flex items-center space-x-1 bg-amber-50 text-amber-700 border border-amber-200 px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider">
+                  <Clock className="w-3 h-3 text-amber-600" />
+                  <span>Subscription Due</span>
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="bg-blue-50/60 rounded-xl p-4 space-y-2 border border-blue-100/60 text-xs">
+            <div className="flex justify-between items-center">
+              <span className="text-gray-500 font-bold uppercase text-[9px] tracking-wider">Monthly Subscription</span>
+              <span className="text-gray-900 font-black">R 99.00 / month</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-gray-500 font-bold uppercase text-[9px] tracking-wider">Tenant Host</span>
+              <span className="font-mono text-[10px] text-blue-900 font-bold truncate max-w-[180px]">
+                {profile.tenantId}
+              </span>
+            </div>
+          </div>
+
+          <p className="text-[10px] text-gray-500 font-medium leading-relaxed">
+            As a user who joined through a tenant link, you must pay your tenant a monthly subscription to keep your account active. Upload your Proof of Payment (PoP) below so your tenant can approve and maintain your active access.
+          </p>
+
+          {tenantPopSuccess && (
+            <div className="p-3 bg-emerald-50 text-emerald-700 text-xs font-bold rounded-xl border border-emerald-200 flex items-center space-x-2 animate-in fade-in">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>Proof of Payment sent to your tenant! Awaiting approval.</span>
+            </div>
+          )}
+
+          {tenantPayments.length > 0 && (
+            <div className="space-y-2 pt-2 border-t border-gray-100">
+              <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Recent Payment Status</p>
+              {tenantPayments.slice(0, 2).map((p: any) => (
+                <div key={p.paymentId} className="flex items-center justify-between bg-gray-50 p-2.5 rounded-xl text-xs">
+                  <span className="font-bold text-gray-700">R {p.amount?.toFixed(2) || '99.00'}</span>
+                  <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded ${
+                    p.status === 'approved' ? 'bg-emerald-100 text-emerald-700' :
+                    p.status === 'rejected' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-700'
+                  }`}>
+                    {p.status === 'approved' ? 'Approved by Tenant' : p.status === 'rejected' ? 'Rejected' : 'Pending Tenant Review'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div>
+            <input
+              type="file"
+              ref={tenantPopInputRef}
+              onChange={handleUploadTenantPop}
+              accept="image/*"
+              className="hidden"
+            />
+            <button
+              onClick={() => tenantPopInputRef.current?.click()}
+              disabled={uploadingTenantPop}
+              className="w-full bg-blue-900 hover:bg-blue-800 text-white py-3 rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center space-x-2 transition-all shadow-sm"
+            >
+              {uploadingTenantPop ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <>
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>Upload Monthly Subscription PoP to Tenant</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="bg-blue-50 rounded-2xl p-6 space-y-3">
         <h3 className="text-xs font-black text-blue-900 uppercase tracking-widest">Invite Friends</h3>

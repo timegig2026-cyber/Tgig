@@ -55,16 +55,22 @@ service cloud.firestore {
              (data.get('isAdmin', false) is bool) &&
              (data.get('subscriptionActive', false) is bool) &&
              (data.get('subscriptionExpiresAt', '') is string) &&
-             (data.get('branding', {}) is map);
+             (data.get('branding', {}) is map) &&
+             (data.get('tenantId', '') is string) &&
+             (data.get('tenantApproved', false) is bool) &&
+             (data.get('userSubscriptionActive', false) is bool) &&
+             (data.get('userSubscriptionExpiresAt', '') is string);
     }
 
     match /users/{userId} {
       allow get: if isSignedIn() || (resource != null && resource.data.get('role', 'seeker') == 'seeker');
-      allow list: if isSignedIn() && (resource.data.get('role', 'seeker') == 'seeker' || isAdmin());
+      allow list: if isSignedIn() && (resource.data.get('role', 'seeker') == 'seeker' || resource.data.get('tenantId', '') == request.auth.uid || isAdmin());
       allow create: if isOwner(userId) && isValidUserProfile(incoming()) && incoming().userId == userId;
       allow update: if isOwner(userId) && isValidUserProfile(incoming()) && incoming().userId == userId;
       allow update: if isAdmin() &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isTenantApproved', 'isTenantRequest', 'subscriptionActive', 'subscriptionExpiresAt', 'updatedAt']);
+      allow update: if isSignedIn() && resource.data.get('tenantId', '') == request.auth.uid &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['tenantApproved', 'userSubscriptionActive', 'userSubscriptionExpiresAt', 'updatedAt']);
     }
 
     // --- Gigs ---

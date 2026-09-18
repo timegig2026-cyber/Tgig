@@ -1,6 +1,11 @@
 import { useState, useEffect } from 'react';
 import { db, collection, query, onSnapshot, updateDoc, doc, where } from '../lib/firebase';
-import { Users, ShieldCheck, DollarSign, ArrowLeft, Check, X, FileText, Loader2, TrendingUp, Search, Palette, Eye, CreditCard, Upload, Lock } from 'lucide-react';
+import { 
+  Users, ShieldCheck, DollarSign, ArrowLeft, Check, X, FileText, Loader2, 
+  TrendingUp, Search, Palette, Eye, CreditCard, Upload, Lock, Copy, CheckCircle2, 
+  Share2, Link as LinkIcon, UserCheck, Calendar, Clock, AlertCircle, RefreshCw,
+  ExternalLink, UserX
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from './AuthProvider';
 
@@ -16,15 +21,31 @@ interface Payment {
   createdAt: string;
 }
 
+interface TenantUser {
+  userId: string;
+  displayName: string;
+  role: string;
+  photoURL?: string;
+  phone?: string;
+  createdAt: string;
+  tenantId?: string;
+  tenantApproved?: boolean;
+  userSubscriptionActive?: boolean;
+  userSubscriptionExpiresAt?: string;
+  latestPayment?: Payment;
+  isApproved?: boolean;
+}
+
 interface TenantPortalViewProps {
   onClose: () => void;
-  initialTab?: 'overview' | 'pop' | 'branding' | 'subscription';
+  initialTab?: 'overview' | 'users' | 'pop' | 'branding' | 'subscription';
 }
 
 export default function TenantPortalView({ onClose, initialTab = 'overview' }: TenantPortalViewProps) {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'overview' | 'pop' | 'branding' | 'subscription'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'pop' | 'branding' | 'subscription'>(initialTab);
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [tenantUsers, setTenantUsers] = useState<TenantUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
   const [profile, setProfile] = useState<any>(null);
@@ -33,6 +54,10 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
   const [uploadingPop, setUploadingPop] = useState(false);
   const [showSubSuccess, setShowSubSuccess] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
+  const [userFilter, setUserFilter] = useState<'all' | 'active' | 'pending'>('all');
+  const [userSearchQuery, setUserSearchQuery] = useState('');
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [approvingUserId, setApprovingUserId] = useState<string | null>(null);
 
   // Branding state
   const [branding, setBranding] = useState({
@@ -57,6 +82,7 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
       }
     });
 
+    // Query payments associated with this tenant
     const q = query(collection(db, 'payments'), where('tenantId', '==', user.uid));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const paymentsList = snapshot.docs.map(doc => ({
@@ -66,9 +92,23 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
       setPayments(paymentsList);
       setLoading(false);
     });
+
+    // Query users who joined through this tenant's referral link
+    const qUsers = query(collection(db, 'users'), where('tenantId', '==', user.uid));
+    const unsubUsers = onSnapshot(qUsers, (snapshot) => {
+      const list = snapshot.docs.map(doc => ({
+        userId: doc.id,
+        ...doc.data()
+      })) as TenantUser[];
+      setTenantUsers(list);
+    }, (err) => {
+      console.warn("Could not load users for tenant", err);
+    });
+
     return () => {
       unsubProfile();
       unsubscribe();
+      unsubUsers();
     };
   }, [user]);
 
@@ -160,10 +200,27 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
 
   const handleApprovePayment = async (paymentId: string) => {
     try {
+      const paymentToApprove = payments.find(p => p.paymentId === paymentId);
       await updateDoc(doc(db, 'payments', paymentId), {
         status: 'approved',
         updatedAt: new Date().toISOString()
       });
+
+      if (paymentToApprove?.userId) {
+        const expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + 30);
+        try {
+          await updateDoc(doc(db, 'users', paymentToApprove.userId), {
+            tenantApproved: true,
+            userSubscriptionActive: true,
+            userSubscriptionExpiresAt: expiresAt.toISOString(),
+            updatedAt: new Date().toISOString()
+          });
+        } catch (uErr) {
+          console.warn("User doc update skipped/fallback", uErr);
+        }
+      }
+
       setSelectedPayment(null);
     } catch (error: any) {
       console.error("Error approving payment", error);
@@ -186,6 +243,292 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
 
   const pendingPayments = payments.filter(p => p.status === 'pending');
   const totalEarnings = payments.filter(p => p.status === 'approved').reduce((acc, curr) => acc + (curr.amount || 0), 0);
+
+  // Merge users from tenantUsers collection and payment records
+  const allReferredUsers: TenantUser[] = (() => {
+    const userMap = new Map<string, TenantUser>();
+
+    tenantUsers.forEach(u => {
+      userMap.set(u.userId, { ...u });
+    });
+
+    payments.forEach(p => {
+      if (!userMap.has(p.userId)) {
+        userMap.set(p.userId, {
+          userId: p.userId,
+          displayName: p.userDisplayName || 'Community Member',
+          role: 'seeker',
+          photoURL: p.userPhotoURL,
+          createdAt: p.createdAt,
+          tenantId: user?.uid,
+          tenantApproved: p.status === 'approved',
+          userSubscriptionActive: p.status === 'approved',
+        });
+      }
+    });
+
+    return Array.from(userMap.values()).map(u => {
+      const userPayments = payments.filter(p => p.userId === u.userId);
+      const latestPayment = userPayments.length > 0 
+        ? [...userPayments].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]
+        : undefined;
+      const hasApprovedPayment = userPayments.some(p => p.status === 'approved');
+      const isApproved = Boolean(u.tenantApproved || u.userSubscriptionActive || hasApprovedPayment);
+
+      return {
+        ...u,
+        latestPayment,
+        isApproved,
+      };
+    });
+  })();
+
+  const activeApprovedUsers = allReferredUsers.filter(u => u.isApproved);
+  const pendingUsers = allReferredUsers.filter(u => !u.isApproved);
+
+  const displayedUsers = allReferredUsers.filter(u => {
+    if (userFilter === 'active') return u.isApproved;
+    if (userFilter === 'pending') return !u.isApproved;
+    return true;
+  }).filter(u => {
+    if (!userSearchQuery.trim()) return true;
+    return (u.displayName || '').toLowerCase().includes(userSearchQuery.toLowerCase());
+  });
+
+  const tenantInviteLink = typeof window !== 'undefined' && user?.uid
+    ? `${window.location.origin}/?tenant=${user.uid}`
+    : '';
+
+  const handleCopyLink = () => {
+    if (!tenantInviteLink) return;
+    navigator.clipboard.writeText(tenantInviteLink).then(() => {
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2500);
+    }).catch(err => {
+      console.warn("Clipboard copy failed", err);
+    });
+  };
+
+  const handleShareLink = () => {
+    if (!tenantInviteLink) return;
+    if (navigator.share) {
+      navigator.share({
+        title: `${profile?.displayName || 'Tenant'} - TimeGig Portal`,
+        text: `Join my network on TimeGig! Sign up through my link to access exclusive opportunities:`,
+        url: tenantInviteLink
+      }).catch(() => {});
+    } else {
+      handleCopyLink();
+    }
+  };
+
+  const handleApproveUser = async (targetUserId: string) => {
+    if (!user) return;
+    setApprovingUserId(targetUserId);
+    try {
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 30);
+      
+      try {
+        await updateDoc(doc(db, 'users', targetUserId), {
+          tenantApproved: true,
+          userSubscriptionActive: true,
+          userSubscriptionExpiresAt: expiresAt.toISOString(),
+          updatedAt: new Date().toISOString()
+        });
+      } catch (err) {
+        console.warn("Direct user doc update skipped/fallback", err);
+      }
+
+      // Approve any pending payment from this user
+      const userPendingPayments = payments.filter(p => p.userId === targetUserId && p.status === 'pending');
+      for (const p of userPendingPayments) {
+        await updateDoc(doc(db, 'payments', p.paymentId), {
+          status: 'approved',
+          updatedAt: new Date().toISOString()
+        });
+      }
+    } catch (error: any) {
+      console.error("Error approving user", error);
+      setLastError(`User Approval Failed: ${error.message}`);
+    } finally {
+      setApprovingUserId(null);
+    }
+  };
+
+  const handleToggleUserStatus = async (targetUserId: string, currentActive: boolean) => {
+    if (!user) return;
+    setApprovingUserId(targetUserId);
+    try {
+      await updateDoc(doc(db, 'users', targetUserId), {
+        tenantApproved: !currentActive,
+        userSubscriptionActive: !currentActive,
+        updatedAt: new Date().toISOString()
+      });
+    } catch (error: any) {
+      console.error("Error updating user status", error);
+      setLastError(`Status Update Failed: ${error.message}`);
+    } finally {
+      setApprovingUserId(null);
+    }
+  };
+
+  const renderUserCards = () => {
+    if (displayedUsers.length === 0) {
+      return (
+        <div className="bg-white p-10 text-center rounded-3xl border border-gray-100 shadow-sm space-y-4">
+          <div className="w-14 h-14 bg-blue-50 rounded-2xl flex items-center justify-center mx-auto text-blue-500">
+            <Users className="w-7 h-7" />
+          </div>
+          <div className="max-w-md mx-auto space-y-1">
+            <h4 className="text-xs font-black text-gray-900 uppercase tracking-wider">
+              {userSearchQuery ? 'No matching users found' : 'No Users Joined Via Link Yet'}
+            </h4>
+            <p className="text-[11px] text-gray-500 font-medium leading-relaxed">
+              {userSearchQuery 
+                ? 'Try a different search term or clear your filter.' 
+                : 'Share your unique tenant link above. Users who join through your link will appear here and must pay you a monthly subscription to keep their account active.'}
+            </p>
+          </div>
+          {!userSearchQuery && (
+            <button
+              onClick={handleCopyLink}
+              className="inline-flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-sm"
+            >
+              <Copy className="w-3.5 h-3.5" />
+              <span>Copy Tenant Referral Link</span>
+            </button>
+          )}
+        </div>
+      );
+    }
+
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {displayedUsers.map(u => {
+          const isProcessing = approvingUserId === u.userId;
+          const joinedDateStr = u.createdAt ? new Date(u.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recently';
+
+          return (
+            <div 
+              key={u.userId}
+              className="bg-white rounded-3xl p-5 border border-gray-100 shadow-sm hover:shadow-md transition-all flex flex-col justify-between space-y-4"
+            >
+              {/* User Header */}
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center space-x-3 min-w-0">
+                  <div className="w-12 h-12 rounded-2xl overflow-hidden bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center shrink-0 border border-blue-100">
+                    {u.photoURL ? (
+                      <img src={u.photoURL} alt={u.displayName} className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="text-sm font-black text-blue-900 uppercase">
+                        {(u.displayName || 'U').charAt(0)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <h4 className="text-sm font-black text-gray-900 truncate leading-snug">
+                      {u.displayName || 'Anonymous Member'}
+                    </h4>
+                    <div className="flex items-center space-x-2 text-[9px] font-bold text-gray-400 uppercase tracking-wider">
+                      <span className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-600 capitalize">{u.role || 'Member'}</span>
+                      <span>•</span>
+                      <span>Joined {joinedDateStr}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Status Badge */}
+                <div className="shrink-0">
+                  {u.isApproved ? (
+                    <span className="inline-flex items-center space-x-1 bg-emerald-50 text-emerald-700 border border-emerald-200/60 px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                      <span>Active & Approved</span>
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center space-x-1 bg-amber-50 text-amber-700 border border-amber-200/60 px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider">
+                      <Clock className="w-3 h-3 text-amber-600" />
+                      <span>Sub Payment Due</span>
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Monthly Subscription Details Box */}
+              <div className="bg-gray-50 rounded-2xl p-3.5 border border-gray-100 space-y-2 text-[11px]">
+                <div className="flex items-center justify-between font-medium">
+                  <span className="text-gray-500 font-bold uppercase text-[9px] tracking-wider">Monthly Subscription</span>
+                  <span className="text-gray-900 font-black">R 99.00 / month</span>
+                </div>
+                <div className="flex items-center justify-between font-medium">
+                  <span className="text-gray-500 font-bold uppercase text-[9px] tracking-wider">Account Status</span>
+                  <span className={`font-bold ${u.isApproved ? 'text-emerald-600' : 'text-amber-600'}`}>
+                    {u.isApproved ? 'Active (Approved by Tenant)' : 'Payment / Approval Required'}
+                  </span>
+                </div>
+                {u.latestPayment && (
+                  <div className="pt-2 border-t border-gray-200/60 flex items-center justify-between text-[10px]">
+                    <span className="text-gray-500">Latest PoP: R {u.latestPayment.amount?.toFixed(2) || '99.00'}</span>
+                    <span className={`font-black uppercase tracking-wider ${
+                      u.latestPayment.status === 'approved' ? 'text-emerald-600' : 
+                      u.latestPayment.status === 'rejected' ? 'text-red-500' : 'text-amber-600'
+                    }`}>
+                      {u.latestPayment.status}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Action Controls */}
+              <div className="flex items-center gap-2 pt-1">
+                {u.latestPayment && (
+                  <button
+                    onClick={() => setSelectedPayment(u.latestPayment!)}
+                    className="px-3 py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center space-x-1 transition-colors"
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                    <span>View PoP</span>
+                  </button>
+                )}
+
+                {!u.isApproved ? (
+                  <button
+                    onClick={() => handleApproveUser(u.userId)}
+                    disabled={isProcessing}
+                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center space-x-1.5 transition-all shadow-sm shadow-emerald-200 disabled:opacity-50"
+                  >
+                    {isProcessing ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <>
+                        <UserCheck className="w-3.5 h-3.5" />
+                        <span>Approve User & Activate</span>
+                      </>
+                    )}
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleToggleUserStatus(u.userId, true)}
+                    disabled={isProcessing}
+                    className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-600 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center space-x-1.5 transition-colors disabled:opacity-50"
+                  >
+                    {isProcessing ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <>
+                        <UserX className="w-3.5 h-3.5 text-gray-400" />
+                        <span>Pause Access</span>
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
 
   return (
     <div className="fixed inset-0 bg-white z-[2000] flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-300">
@@ -212,6 +555,20 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
             {!profile?.subscriptionActive && <Lock className="w-3 h-3 mr-1" />}
             <TrendingUp className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Overview</span>
+          </button>
+          <button 
+            onClick={() => {
+              if (profile?.subscriptionActive) setActiveTab('users');
+              else setActiveTab('subscription');
+            }}
+            className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'users' ? 'bg-white text-blue-900 shadow-sm' : 'text-blue-300 hover:text-white'} ${!profile?.subscriptionActive && activeTab !== 'users' ? 'opacity-50' : ''}`}
+          >
+            {!profile?.subscriptionActive && <Lock className="w-3 h-3 mr-1" />}
+            <Users className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Users</span>
+            {activeApprovedUsers.length > 0 && (
+              <span className="bg-emerald-500 text-white w-4 h-4 flex items-center justify-center rounded-full text-[8px] font-bold">{activeApprovedUsers.length}</span>
+            )}
           </button>
           <button 
             onClick={() => {
@@ -281,19 +638,149 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
                 exit={{ opacity: 0, y: -10 }}
                 className="space-y-6"
               >
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+                {/* 3 Metric Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100">
                     <DollarSign className="w-5 h-5 text-green-600 mb-2" />
                     <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Total Earnings</p>
                     <p className="text-2xl font-black text-gray-900">R {totalEarnings.toFixed(2)}</p>
                   </div>
-                  <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
-                    <ShieldCheck className="w-5 h-5 text-blue-600 mb-2" />
-                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Pending Approvals</p>
+                  
+                  <div 
+                    onClick={() => setActiveTab('users')}
+                    className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 cursor-pointer hover:border-blue-200 transition-all group"
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <UserCheck className="w-5 h-5 text-emerald-600 group-hover:scale-110 transition-transform" />
+                      <span className="text-[9px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                        {activeApprovedUsers.length} Active
+                      </span>
+                    </div>
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Active Approved Users</p>
+                    <p className="text-2xl font-black text-gray-900">
+                      {activeApprovedUsers.length} <span className="text-xs text-gray-400 font-bold">/ {allReferredUsers.length} joined</span>
+                    </p>
+                  </div>
+
+                  <div 
+                    onClick={() => setActiveTab('pop')}
+                    className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 cursor-pointer hover:border-blue-200 transition-all group"
+                  >
+                    <ShieldCheck className="w-5 h-5 text-blue-600 mb-2 group-hover:scale-110 transition-transform" />
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Pending PoP Approvals</p>
                     <p className="text-2xl font-black text-gray-900">{pendingPayments.length}</p>
                   </div>
                 </div>
 
+                {/* Tenant Referral / Join Link Card */}
+                <div className="bg-gradient-to-br from-blue-900 to-indigo-950 text-white rounded-3xl p-6 shadow-md space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 rounded-2xl bg-white/10 flex items-center justify-center">
+                        <LinkIcon className="w-5 h-5 text-blue-300" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-black uppercase tracking-wider">Your Tenant Referral & Join Link</h3>
+                        <p className="text-[10px] text-blue-200 font-medium">Invite users to register directly through your tenant network</p>
+                      </div>
+                    </div>
+                    <span className="self-start sm:self-auto text-[9px] font-black bg-blue-500/30 text-blue-200 px-2.5 py-1 rounded-full uppercase tracking-widest border border-blue-400/30">
+                      Active Tenant Link
+                    </span>
+                  </div>
+
+                  <div className="bg-white/10 rounded-2xl p-2.5 flex items-center space-x-2 border border-white/10">
+                    <input 
+                      type="text" 
+                      readOnly 
+                      value={tenantInviteLink} 
+                      className="bg-transparent text-white text-xs font-mono font-medium flex-1 px-2 focus:outline-none truncate"
+                    />
+                    <button 
+                      onClick={handleCopyLink}
+                      className={`px-3.5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center space-x-1.5 transition-all shadow-sm ${
+                        copiedLink 
+                          ? 'bg-emerald-500 text-white' 
+                          : 'bg-white text-blue-900 hover:bg-blue-50'
+                      }`}
+                    >
+                      {copiedLink ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedLink ? 'Copied!' : 'Copy Link'}</span>
+                    </button>
+                    <button 
+                      onClick={handleShareLink}
+                      className="px-3.5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center space-x-1.5 bg-blue-600 hover:bg-blue-500 text-white transition-all shadow-sm"
+                    >
+                      <Share2 className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">Share</span>
+                    </button>
+                  </div>
+
+                  <p className="text-[10px] text-blue-200/90 leading-relaxed font-medium">
+                    Users who join through your tenant link are tracked in your portal. <span className="text-white font-bold underline decoration-blue-400">Users must pay you a monthly subscription to keep their account active.</span>
+                  </p>
+                </div>
+
+                {/* Monthly Subscription Policy Notice */}
+                <div className="bg-amber-50/90 border border-amber-200 rounded-3xl p-5 space-y-2">
+                  <div className="flex items-center space-x-2 text-amber-900">
+                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                    <h4 className="text-xs font-black uppercase tracking-wider">Monthly Subscription Requirement Policy</h4>
+                  </div>
+                  <p className="text-[11px] text-amber-800 leading-relaxed font-medium">
+                    Users who join through your tenant link are required to pay you a monthly subscription (R99,00/month) to keep their account active. As tenant administrator, you verify their subscription payment and approve or pause their account access.
+                  </p>
+                </div>
+
+                {/* Active Approved Users Section */}
+                <div className="space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-xs font-black text-gray-900 uppercase tracking-widest">Active Approved Users</h3>
+                      <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
+                        {activeApprovedUsers.length} Active & Approved • {allReferredUsers.length} Total Registered
+                      </p>
+                    </div>
+
+                    <div className="flex items-center space-x-2">
+                      <div className="relative">
+                        <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <input
+                          type="text"
+                          placeholder="Search users..."
+                          value={userSearchQuery}
+                          onChange={(e) => setUserSearchQuery(e.target.value)}
+                          className="bg-white border border-gray-200 rounded-xl pl-8 pr-3 py-1.5 text-xs text-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-500 w-36 sm:w-44"
+                        />
+                      </div>
+                      
+                      <div className="flex items-center bg-gray-200/70 p-1 rounded-xl text-[9px] font-black uppercase tracking-wider">
+                        <button
+                          onClick={() => setUserFilter('all')}
+                          className={`px-2.5 py-1 rounded-lg transition-all ${userFilter === 'all' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}
+                        >
+                          All ({allReferredUsers.length})
+                        </button>
+                        <button
+                          onClick={() => setUserFilter('active')}
+                          className={`px-2.5 py-1 rounded-lg transition-all ${userFilter === 'active' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}`}
+                        >
+                          Active ({activeApprovedUsers.length})
+                        </button>
+                        <button
+                          onClick={() => setUserFilter('pending')}
+                          className={`px-2.5 py-1 rounded-lg transition-all ${userFilter === 'pending' ? 'bg-white text-amber-700 shadow-sm' : 'text-gray-500'}`}
+                        >
+                          Due ({pendingUsers.length})
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {renderUserCards()}
+                </div>
+
+                {/* Recent Payments Box */}
                 <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
                    <h3 className="text-xs font-black text-gray-900 uppercase tracking-widest mb-6">Recent Payments</h3>
                    {payments.length === 0 ? (
@@ -319,6 +806,125 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
                      </div>
                    )}
                 </div>
+              </motion.div>
+            )}
+
+            {activeTab === 'users' && (
+              <motion.div 
+                key="users"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="space-y-6"
+              >
+                {/* Header Info Banner */}
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div>
+                    <h3 className="text-sm font-black text-gray-900 uppercase tracking-widest">Active Approved Users Directory</h3>
+                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
+                      Manage community members who joined through your tenant link
+                    </p>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <span className="bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border border-emerald-200/50">
+                      {activeApprovedUsers.length} Active Approved
+                    </span>
+                    <span className="bg-amber-50 text-amber-700 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border border-amber-200/50">
+                      {pendingUsers.length} Payment Due
+                    </span>
+                  </div>
+                </div>
+
+                {/* Tenant Referral / Join Link Card */}
+                <div className="bg-gradient-to-br from-blue-900 to-indigo-950 text-white rounded-3xl p-6 shadow-md space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 rounded-2xl bg-white/10 flex items-center justify-center">
+                        <LinkIcon className="w-5 h-5 text-blue-300" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-black uppercase tracking-wider">Share Your Tenant Link</h4>
+                        <p className="text-[10px] text-blue-200 font-medium">New members who use this link are assigned directly to your tenant portal</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-white/10 rounded-2xl p-2.5 flex items-center space-x-2 border border-white/10">
+                    <input 
+                      type="text" 
+                      readOnly 
+                      value={tenantInviteLink} 
+                      className="bg-transparent text-white text-xs font-mono font-medium flex-1 px-2 focus:outline-none truncate"
+                    />
+                    <button 
+                      onClick={handleCopyLink}
+                      className={`px-3.5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center space-x-1.5 transition-all shadow-sm ${
+                        copiedLink 
+                          ? 'bg-emerald-500 text-white' 
+                          : 'bg-white text-blue-900 hover:bg-blue-50'
+                      }`}
+                    >
+                      {copiedLink ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedLink ? 'Copied!' : 'Copy Link'}</span>
+                    </button>
+                    <button 
+                      onClick={handleShareLink}
+                      className="px-3.5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center space-x-1.5 bg-blue-600 hover:bg-blue-500 text-white transition-all shadow-sm"
+                    >
+                      <Share2 className="w-3.5 h-3.5" />
+                      <span>Share</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Monthly Subscription Policy Notice */}
+                <div className="bg-amber-50/90 border border-amber-200 rounded-3xl p-5 space-y-2">
+                  <div className="flex items-center space-x-2 text-amber-900">
+                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                    <h4 className="text-xs font-black uppercase tracking-wider">Subscription Policy Reminder</h4>
+                  </div>
+                  <p className="text-[11px] text-amber-800 leading-relaxed font-medium">
+                    Users who joined through your tenant link must pay you a monthly subscription to keep their account active. Active approved users have full access to services. If a user has not paid their monthly subscription fee, click Pause Access or request payment.
+                  </p>
+                </div>
+
+                {/* Search & Filter Bar */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-3xl border border-gray-100 shadow-sm">
+                  <div className="relative flex-1">
+                    <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder="Search users by name..."
+                      value={userSearchQuery}
+                      onChange={(e) => setUserSearchQuery(e.target.value)}
+                      className="w-full bg-gray-50 border-none rounded-xl pl-10 pr-4 py-2.5 text-xs font-bold text-gray-900 focus:ring-2 focus:ring-blue-100"
+                    />
+                  </div>
+
+                  <div className="flex items-center space-x-1 bg-gray-100 p-1 rounded-2xl text-[9px] font-black uppercase tracking-wider">
+                    <button
+                      onClick={() => setUserFilter('all')}
+                      className={`px-3 py-1.5 rounded-xl transition-all ${userFilter === 'all' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
+                    >
+                      All ({allReferredUsers.length})
+                    </button>
+                    <button
+                      onClick={() => setUserFilter('active')}
+                      className={`px-3 py-1.5 rounded-xl transition-all ${userFilter === 'active' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
+                    >
+                      Active ({activeApprovedUsers.length})
+                    </button>
+                    <button
+                      onClick={() => setUserFilter('pending')}
+                      className={`px-3 py-1.5 rounded-xl transition-all ${userFilter === 'pending' ? 'bg-white text-amber-700 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
+                    >
+                      Payment Due ({pendingUsers.length})
+                    </button>
+                  </div>
+                </div>
+
+                {/* Users Cards Grid */}
+                {renderUserCards()}
               </motion.div>
             )}
 
