@@ -11,6 +11,15 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isAdmin() {
+      return isSignedIn() &&
+             request.auth.token.get('email', '').lower() == 'timegig2026@gmail.com';
+    }
+
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
@@ -29,35 +38,97 @@ service cloud.firestore {
 
     // --- User Profiles ---
     function isValidUserProfile(data) {
-      return data.keys().hasAll(['userId', 'displayName', 'role']) &&
-             data.userId == request.auth.uid &&
-             data.displayName is string && data.displayName.size() <= 100 &&
-             data.role in ['seeker', 'provider'] &&
-             (data.get('bio', '') is string && data.get('bio', '').size() <= 500);
+      return (data.get('userId', '') is string) &&
+             (data.get('displayName', '') is string && data.get('displayName', '').size() <= 100) &&
+             (data.get('role', 'seeker') in ['seeker', 'provider']) &&
+             (data.get('createdAt', '') is string) &&
+             (data.get('updatedAt', '') is string) &&
+             (data.get('firstName', '') is string) &&
+             (data.get('surname', '') is string) &&
+             (data.get('phone', '') is string) &&
+             (data.get('socialLinks', []) is list) &&
+             (data.get('bio', '') is string) &&
+             (data.get('photoURL', '') is string) &&
+             (data.get('idDocument', '') is string) &&
+             (data.get('isTenantRequest', false) is bool) &&
+             (data.get('isTenantApproved', false) is bool) &&
+             (data.get('isAdmin', false) is bool) &&
+             (data.get('subscriptionActive', false) is bool);
     }
 
     match /users/{userId} {
-      allow get: if isSignedIn() || (resource != null && resource.data.role == 'seeker');
-      allow list: if resource.data.role == 'seeker';
-      allow create: if isOwner(userId) && isValidUserProfile(incoming());
-      allow update: if isOwner(userId) && isValidUserProfile(incoming()) && 
-                    incoming().userId == existing().userId;
+      allow get: if isSignedIn() || (resource != null && resource.data.get('role', 'seeker') == 'seeker');
+      allow list: if isSignedIn() && (resource.data.get('role', 'seeker') == 'seeker' || isAdmin());
+      allow create: if isOwner(userId) && isValidUserProfile(incoming()) && incoming().userId == userId;
+      allow update: if isOwner(userId) && isValidUserProfile(incoming()) && incoming().userId == userId;
+      allow update: if isAdmin() && (
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isTenantApproved', 'isTenantRequest', 'updatedAt']) ||
+        isValidUserProfile(incoming())
+      );
     }
 
     // --- Gigs ---
     function isValidGig(data) {
-      return data.keys().hasAll(['gigId', 'title', 'providerId', 'location']) &&
+      return data.keys().hasAll(['gigId', 'title', 'providerId', 'location', 'createdAt']) &&
              data.gigId is string &&
              data.title is string && data.title.size() <= 200 &&
              data.providerId == request.auth.uid &&
-             data.location.lat is number && data.location.lng is number;
+             data.location.lat is number && data.location.lng is number &&
+             data.createdAt is string &&
+             (data.get('category', 'other') is string) &&
+             (data.get('updatedAt', '') is string);
     }
 
     match /gigs/{gigId} {
-      allow read: if true;
+      allow read: if isSignedIn();
       allow create: if isSignedIn() && isValidGig(incoming());
-      allow update: if isSignedIn() && existing().providerId == request.auth.uid && isValidGig(incoming());
+      allow update: if isSignedIn() && existing().providerId == request.auth.uid && isValidGig(incoming()) &&
+                    incoming().gigId == existing().gigId &&
+                    (incoming().get('createdAt', '') == existing().get('createdAt', ''));
       allow delete: if isSignedIn() && existing().providerId == request.auth.uid;
+    }
+
+    // --- Hires ---
+    function isValidHire(data) {
+      return data.keys().hasAll(['hireId', 'requesterId', 'seekerId', 'status', 'destination', 'createdAt']) &&
+             data.hireId is string &&
+             data.requesterId == request.auth.uid &&
+             data.status in ['pending', 'accepted', 'completed'] &&
+             data.destination.lat is number && data.destination.lng is number &&
+             data.createdAt is string &&
+             (data.get('updatedAt', '') is string);
+    }
+
+    match /hires/{hireId} {
+      allow read: if isSignedIn() && (resource.data.requesterId == request.auth.uid || resource.data.seekerId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && isValidHire(incoming()) && isValidId(hireId);
+      allow update: if isSignedIn() && 
+                    (resource.data.requesterId == request.auth.uid || resource.data.seekerId == request.auth.uid || isAdmin()) &&
+                    (incoming().status in ['pending', 'accepted', 'completed']) &&
+                    incoming().hireId == existing().hireId &&
+                    (incoming().get('createdAt', '') == existing().get('createdAt', ''));
+    }
+
+    // --- Payments ---
+    function isValidPayment(data) {
+      return data.keys().hasAll(['paymentId', 'userId', 'tenantId', 'proofImage', 'status', 'createdAt']) &&
+             data.paymentId is string &&
+             data.userId == request.auth.uid &&
+             data.tenantId is string &&
+             data.status == 'pending' &&
+             data.createdAt is string &&
+             (data.get('updatedAt', '') is string);
+    }
+
+    match /payments/{paymentId} {
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || resource.data.tenantId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && isValidPayment(incoming()) && isValidId(paymentId);
+      allow update: if isSignedIn() && (resource.data.tenantId == request.auth.uid || isAdmin()) &&
+                    (incoming().status in ['pending', 'approved', 'rejected']) &&
+                    incoming().paymentId == existing().paymentId &&
+                    incoming().userId == existing().userId &&
+                    incoming().tenantId == existing().tenantId &&
+                    (incoming().get('createdAt', '') == existing().get('createdAt', ''));
     }
   }
 }

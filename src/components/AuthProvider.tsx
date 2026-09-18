@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { auth, onAuthStateChanged, User, doc, getDoc, setDoc, db, serverTimestamp, handleFirestoreError, OperationType } from '../lib/firebase';
+import { auth, onAuthStateChanged, User, doc, getDoc, setDoc, db, serverTimestamp, handleFirestoreError, OperationType, onSnapshot } from '../lib/firebase';
 
 interface AuthContextType {
   user: User | null;
@@ -15,37 +15,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    let profileUnsubscribe: (() => void) | null = null;
+
+    const authUnsubscribe = onAuthStateChanged(auth, async (user) => {
       setUser(user);
+      
+      if (profileUnsubscribe) {
+        profileUnsubscribe();
+        profileUnsubscribe = null;
+      }
+
       if (user) {
-        // Fetch or create user profile
         const profileRef = doc(db, 'users', user.uid);
-        try {
-          const profileSnap = await getDoc(profileRef);
-          
-          if (profileSnap.exists()) {
-            setProfile(profileSnap.data());
+        
+        // Use onSnapshot for real-time profile updates
+        profileUnsubscribe = onSnapshot(profileRef, async (snapshot) => {
+          if (snapshot.exists()) {
+            setProfile(snapshot.data());
           } else {
-            // Create initial profile
+            // Create initial profile if it doesn't exist
             const newProfile = {
               userId: user.uid,
               displayName: user.displayName || 'Anonymous User',
               role: 'seeker',
-              createdAt: serverTimestamp(),
+              createdAt: new Date().toISOString(),
             };
-            await setDoc(profileRef, newProfile);
-            setProfile(newProfile);
+            try {
+              await setDoc(profileRef, newProfile);
+            } catch (error) {
+              handleFirestoreError(error, OperationType.CREATE, `users/${user.uid}`);
+            }
           }
-        } catch (error) {
+          setLoading(false);
+        }, (error) => {
           handleFirestoreError(error, OperationType.GET, `users/${user.uid}`);
-        }
+        });
       } else {
         setProfile(null);
+        setLoading(false);
       }
-      setLoading(false);
     });
 
-    return unsubscribe;
+    return () => {
+      authUnsubscribe();
+      if (profileUnsubscribe) profileUnsubscribe();
+    };
   }, []);
 
   return (

@@ -6,9 +6,19 @@
       "type": "object",
       "properties": {
         "userId": { "type": "string", "description": "The unique ID of the user." },
+        "firstName": { "type": "string", "maxLength": 100 },
+        "middleName": { "type": "string", "maxLength": 100 },
+        "surname": { "type": "string", "maxLength": 100 },
         "displayName": { "type": "string", "maxLength": 100, "description": "The display name of the user." },
+        "phone": { "type": "string", "maxLength": 20 },
+        "socialLinks": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "idDocument": { "type": "string", "description": "Base64 encoded ID document." },
         "bio": { "type": "string", "maxLength": 500, "description": "A short bio about the user." },
         "role": { "type": "string", "enum": ["seeker", "provider"], "description": "User's primary role." },
+        "photoURL": { "type": "string", "description": "Base64 or URL of the profile picture." },
         "location": {
           "type": "object",
           "properties": {
@@ -16,10 +26,15 @@
             "lng": { "type": "number" }
           }
         },
+        "isTenantRequest": { "type": "boolean", "description": "Whether the user has requested to be a tenant." },
+        "isTenantApproved": { "type": "boolean", "description": "Whether the user's tenant request is approved." },
+        "isAdmin": { "type": "boolean", "description": "Whether the user is an administrator." },
+        "subscriptionActive": { "type": "boolean", "description": "Whether the tenant subscription is active." },
         "lastSeen": { "type": "string", "format": "date-time", "description": "Last time user was online." },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["userId", "displayName", "role"]
+      "required": ["userId", "displayName", "role", "createdAt"]
     },
     "Gig": {
       "title": "Gig",
@@ -28,6 +43,7 @@
       "properties": {
         "gigId": { "type": "string" },
         "title": { "type": "string", "maxLength": 200 },
+        "category": { "type": "string", "enum": ["car wash", "painting", "cleaning", "nanny", "construction", "security", "other"] },
         "description": { "type": "string", "maxLength": 1000 },
         "providerId": { "type": "string" },
         "location": {
@@ -40,9 +56,56 @@
         },
         "price": { "type": "number" },
         "status": { "type": "string", "enum": ["open", "closed", "in-progress"] },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["gigId", "title", "providerId", "location"]
+      "required": ["gigId", "title", "providerId", "location", "createdAt"]
+    },
+    "Hire": {
+      "title": "Hire",
+      "description": "Represents a hiring request from a user to a seeker.",
+      "type": "object",
+      "properties": {
+        "hireId": { "type": "string" },
+        "requesterId": { "type": "string" },
+        "seekerId": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "accepted", "completed"] },
+        "destination": {
+          "type": "object",
+          "properties": {
+            "lat": { "type": "number" },
+            "lng": { "type": "number" }
+          }
+        },
+        "seekerLocation": {
+          "type": "object",
+          "properties": {
+            "lat": { "type": "number" },
+            "lng": { "type": "number" }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["hireId", "requesterId", "seekerId", "status", "destination", "createdAt"]
+    },
+    "Payment": {
+      "title": "Payment",
+      "description": "Proof of payment from a user to a tenant.",
+      "type": "object",
+      "properties": {
+        "paymentId": { "type": "string" },
+        "userId": { "type": "string", "description": "The user making the payment." },
+        "tenantId": { "type": "string", "description": "The tenant receiving the payment." },
+        "userDisplayName": { "type": "string" },
+        "userPhotoURL": { "type": "string" },
+        "proofImage": { "type": "string", "description": "Base64 encoded proof of payment image." },
+        "amount": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["paymentId", "userId", "tenantId", "proofImage", "status", "createdAt"]
     }
   },
   "firestore": {
@@ -53,6 +116,14 @@
     "/gigs/{gigId}": {
       "schema": "Gig",
       "description": "Available gigs on the map."
+    },
+    "/hires/{hireId}": {
+      "schema": "Hire",
+      "description": "Hiring records between users and seekers."
+    },
+    "/payments/{paymentId}": {
+      "schema": "Payment",
+      "description": "Proof of payment records for tenants."
     }
   }
 }
