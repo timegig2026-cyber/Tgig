@@ -39,6 +39,23 @@
         "userSubscriptionExpiresAt": { "type": "string", "format": "date-time", "description": "Expiry date of the user's monthly subscription to the tenant." },
         "tenantAgreementAccepted": { "type": "boolean", "description": "Whether the user has accepted the tenant agreement." },
         "tenantAgreementAcceptedAt": { "type": "string", "format": "date-time", "description": "Timestamp when the tenant agreement was accepted." },
+        "trialExpiresAt": { "type": "string", "format": "date-time", "description": "Timestamp when the 30-day trial expires." },
+        "lastViewedSeekers": { "type": "string", "format": "date-time", "description": "Timestamp when the user last viewed the seekers list." },
+        "lastViewedGigs": { "type": "string", "format": "date-time", "description": "Timestamp when the user last viewed the gigs map." },
+        "notifications": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "title": { "type": "string" },
+              "message": { "type": "string" },
+              "type": { "type": "string" },
+              "createdAt": { "type": "string", "format": "date-time" }
+            }
+          },
+          "description": "List of user notifications."
+        },
         "bankDetails": {
           "type": "object",
           "properties": {

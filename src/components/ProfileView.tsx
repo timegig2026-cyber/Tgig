@@ -1,6 +1,6 @@
 import { useAuth } from './AuthProvider';
 import { auth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, updateProfile, db, doc, updateDoc, setDoc, collection, query, where, onSnapshot, handleFirestoreError, OperationType } from '../lib/firebase';
-import { User as UserIcon, LogOut, LogIn, Share2, Check, Mail, Lock, UserPlus, Camera, Loader2, Edit3, MapPin, ShieldCheck, TrendingUp, CreditCard, Upload, CheckCircle2, Clock, AlertCircle, Building2 } from 'lucide-react';
+import { User as UserIcon, LogOut, LogIn, Share2, Check, Mail, Lock, UserPlus, Camera, Loader2, Edit3, MapPin, ShieldCheck, TrendingUp, CreditCard, Upload, CheckCircle2, Clock, AlertCircle, Building2, Download } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { motion } from 'motion/react';
 import ProfileEdit from './ProfileEdit';
@@ -9,6 +9,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import TenantPortalView from './TenantPortalView';
 import AdminView from './AdminView';
+import { PWAInstallButton } from './PWAControls';
 
 // Fix for default marker icon issue in Leaflet with bundlers
 import icon from 'leaflet/dist/images/marker-icon.png';
@@ -397,6 +398,10 @@ export default function ProfileView() {
 
   return (
     <div className="flex-1 p-6 space-y-8 overflow-y-auto pb-20">
+      <div className="flex justify-center">
+        <PWAInstallButton />
+      </div>
+
       {(!profile?.photoURL || profile.photoURL.trim() === '') && (
         <div className="bg-amber-50 border-2 border-amber-200 rounded-3xl p-5 flex items-center space-x-4 shadow-sm animate-pulse">
           <div className="w-10 h-10 bg-amber-500 text-white rounded-2xl flex items-center justify-center font-black flex-shrink-0">
@@ -685,17 +690,34 @@ export default function ProfileView() {
             </div>
 
             <div>
-              {profile?.tenantApproved || profile?.userSubscriptionActive ? (
-                <span className="inline-flex items-center space-x-1 bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider">
-                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                  <span>Active & Approved</span>
-                </span>
-              ) : (
-                <span className="inline-flex items-center space-x-1 bg-amber-50 text-amber-700 border border-amber-200 px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider">
-                  <Clock className="w-3 h-3 text-amber-600" />
-                  <span>Subscription Due</span>
-                </span>
-              )}
+              {(() => {
+                const now = new Date();
+                const trialActive = profile?.trialExpiresAt ? new Date(profile.trialExpiresAt) > now : false;
+                const trialDaysLeft = profile?.trialExpiresAt ? Math.max(0, Math.ceil((new Date(profile.trialExpiresAt).getTime() - now.getTime()) / (1000 * 60 * 60 * 24))) : 0;
+
+                if (profile?.tenantApproved || profile?.userSubscriptionActive) {
+                  return (
+                    <span className="inline-flex items-center space-x-1 bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                      <span>Active & Approved</span>
+                    </span>
+                  );
+                } else if (trialActive) {
+                  return (
+                    <span className="inline-flex items-center space-x-1 bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider">
+                      <Clock className="w-3 h-3 text-blue-600" />
+                      <span>Trial Active ({trialDaysLeft}d left)</span>
+                    </span>
+                  );
+                } else {
+                  return (
+                    <span className="inline-flex items-center space-x-1 bg-amber-50 text-amber-700 border border-amber-200 px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider">
+                      <Clock className="w-3 h-3 text-amber-600" />
+                      <span>Subscription Due</span>
+                    </span>
+                  );
+                }
+              })()}
             </div>
           </div>
 

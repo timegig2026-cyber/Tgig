@@ -1409,8 +1409,8 @@ export default function TenantPortalView({ onClose, initialTab = 'overview' }: T
                       <h3 className="text-sm font-black text-gray-900 uppercase tracking-widest">Monthly Subscription</h3>
                       <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Keep your application active for 30 days</p>
                     </div>
-                    <div className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest ${profile?.subscriptionActive ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'}`}>
-                      {profile?.subscriptionActive ? 'Status: Active' : 'Status: Payment Required'}
+                    <div className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest ${profile?.subscriptionActive ? 'bg-green-50 text-green-600' : (profile?.trialExpiresAt && new Date(profile.trialExpiresAt) > new Date()) ? 'bg-blue-50 text-blue-600' : 'bg-red-50 text-red-600'}`}>
+                      {profile?.subscriptionActive ? 'Status: Active' : (profile?.trialExpiresAt && new Date(profile.trialExpiresAt) > new Date()) ? `Status: Trial (${Math.max(0, Math.ceil((new Date(profile.trialExpiresAt).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)))} days left)` : 'Status: Payment Required'}
                     </div>
                   </div>
 

@@ -66,6 +66,10 @@ service cloud.firestore {
              (!('userSubscriptionExpiresAt' in data) || (data.userSubscriptionExpiresAt is string)) &&
              (!('tenantAgreementAccepted' in data) || (data.tenantAgreementAccepted is bool)) &&
              (!('tenantAgreementAcceptedAt' in data) || (data.tenantAgreementAcceptedAt == null || data.tenantAgreementAcceptedAt is string)) &&
+             (!('trialExpiresAt' in data) || (data.trialExpiresAt is string)) &&
+             (!('lastViewedSeekers' in data) || (data.lastViewedSeekers is string)) &&
+             (!('lastViewedGigs' in data) || (data.lastViewedGigs is string)) &&
+             (!('notifications' in data) || (data.notifications is list)) &&
              (!('bankDetails' in data) || (data.bankDetails is map));
     }
 

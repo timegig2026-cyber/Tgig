@@ -70,11 +70,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           } else {
             // Create initial profile if it doesn't exist
             const tenantRef = typeof window !== 'undefined' ? (localStorage.getItem('tenant_ref') || '') : '';
+            const now = new Date();
+            const trialExpiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+            
             const newProfile: any = {
               userId: user.uid,
               displayName: user.displayName || 'Anonymous User',
               role: 'seeker',
-              createdAt: new Date().toISOString(),
+              createdAt: now.toISOString(),
+              trialExpiresAt: trialExpiresAt,
+              lastViewedSeekers: now.toISOString(),
+              lastViewedGigs: now.toISOString(),
+              notifications: []
             };
             if (tenantRef && tenantRef !== user.uid) {
               newProfile.tenantId = tenantRef;
