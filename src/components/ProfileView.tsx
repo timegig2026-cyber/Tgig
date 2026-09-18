@@ -365,24 +365,53 @@ export default function ProfileView() {
         </div>
       )}
 
-      {/* User Location Map */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest">Your Pin Point</h3>
-          <span className="text-[9px] text-gray-400 font-bold italic">Automatically set to your location</span>
-        </div>
-        <div className="h-40 w-full rounded-2xl overflow-hidden border-4 border-gray-50 shadow-sm relative z-0">
-          <MapContainer 
-            center={profile?.location || { lat: -30.5595, lng: 22.9375 }} 
-            zoom={13} 
-            className="h-full w-full"
-            zoomControl={false}
-          >
-            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-            <Marker position={profile?.location || { lat: -30.5595, lng: 22.9375 }} />
-          </MapContainer>
+      {/* Address & Location Details */}
+      <div className="bg-gray-50 rounded-2xl p-6 space-y-4">
+        <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest">Address & Location</h3>
+        <div className="space-y-3 text-xs">
+          {profile?.streetAddress && (
+            <div className="flex justify-between items-center">
+              <span className="font-bold text-gray-400 uppercase tracking-wider">Street Address</span>
+              <span className="font-bold text-gray-900">{profile.streetAddress}</span>
+            </div>
+          )}
+          {profile?.city && (
+            <div className="flex justify-between items-center">
+              <span className="font-bold text-gray-400 uppercase tracking-wider">Location / City</span>
+              <span className="font-bold text-gray-900">{profile.city}</span>
+            </div>
+          )}
+          {profile?.province && (
+            <div className="flex justify-between items-center">
+              <span className="font-bold text-gray-400 uppercase tracking-wider">Province</span>
+              <span className="font-bold text-gray-900">{profile.province}</span>
+            </div>
+          )}
+          {!profile?.streetAddress && !profile?.city && !profile?.province && (
+            <p className="text-gray-400 italic">No address details provided yet.</p>
+          )}
         </div>
       </div>
+
+      {/* User Location Map (Optional) */}
+      {profile?.location && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest">Map Pin Point</h3>
+          </div>
+          <div className="h-40 w-full rounded-2xl overflow-hidden border-4 border-gray-50 shadow-sm relative z-0">
+            <MapContainer 
+              center={[profile.location.lat || -30.5595, profile.location.lng || 22.9375]} 
+              zoom={13} 
+              className="h-full w-full"
+              zoomControl={false}
+            >
+              <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+              <Marker position={[profile.location.lat || -30.5595, profile.location.lng || 22.9375]} />
+            </MapContainer>
+          </div>
+        </div>
+      )}
 
       <div className="bg-gray-50 rounded-2xl p-6 space-y-4">
         <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest">Account Overview</h3>

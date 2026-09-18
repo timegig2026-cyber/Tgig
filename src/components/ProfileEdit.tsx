@@ -21,6 +21,10 @@ export default function ProfileEdit({ onClose }: ProfileEditProps) {
   const [surname, setSurname] = useState(profile?.surname || '');
   const [phone, setPhone] = useState(profile?.phone || '');
   const [bio, setBio] = useState(profile?.bio || '');
+  const [streetAddress, setStreetAddress] = useState(profile?.streetAddress || '');
+  const [city, setCity] = useState(profile?.city || '');
+  const [province, setProvince] = useState(profile?.province || '');
+  const [includeLocationMap, setIncludeLocationMap] = useState<boolean>(!!profile?.location);
   const [socialLinks, setSocialLinks] = useState<string[]>(profile?.socialLinks || ['']);
   const [location, setLocation] = useState<{ lat: number, lng: number }>(
     profile?.location ? { lat: Number(profile.location.lat || profile.location.latitude || -30.5595), lng: Number(profile.location.lng || profile.location.longitude || 22.9375) } : { lat: -30.5595, lng: 22.9375 }
@@ -77,24 +81,32 @@ export default function ProfileEdit({ onClose }: ProfileEditProps) {
 
     try {
       const profileRef = doc(db, 'users', user.uid);
-      const plainLocation = {
-        lat: Number(location?.lat || -30.5595),
-        lng: Number(location?.lng || 22.9375)
-      };
-
-      await updateDoc(profileRef, {
+      const profileData: any = {
         firstName,
         middleName,
         surname,
         displayName: `${firstName} ${surname}`.trim(),
         phone,
         bio,
+        streetAddress,
+        city,
+        province,
         socialLinks: socialLinks.filter(l => l.trim() !== ''),
-        location: plainLocation,
         idDocument,
         isTenantRequest,
         updatedAt: new Date().toISOString()
-      });
+      };
+
+      if (includeLocationMap) {
+        profileData.location = {
+          lat: Number(location?.lat || -30.5595),
+          lng: Number(location?.lng || 22.9375)
+        };
+      } else {
+        profileData.location = null;
+      }
+
+      await updateDoc(profileRef, profileData);
       
       setSuccess(true);
       setTimeout(() => {
@@ -199,19 +211,73 @@ export default function ProfileEdit({ onClose }: ProfileEditProps) {
           </div>
         </section>
 
-        {/* Address Pin Point */}
+        {/* Address Details */}
+        <section className="space-y-4">
+          <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Address Details</h3>
+          <div className="grid grid-cols-1 gap-4">
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-1">Street Address</label>
+              <input
+                type="text"
+                value={streetAddress}
+                onChange={(e) => setStreetAddress(e.target.value)}
+                placeholder="123 Main Street"
+                className="w-full bg-gray-50 border-none rounded-xl py-3 px-4 text-sm font-bold text-gray-900 focus:ring-2 focus:ring-gray-200"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-1">Location / City</label>
+                <input
+                  type="text"
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
+                  placeholder="Johannesburg"
+                  className="w-full bg-gray-50 border-none rounded-xl py-3 px-4 text-sm font-bold text-gray-900 focus:ring-2 focus:ring-gray-200"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-1">Province</label>
+                <input
+                  type="text"
+                  value={province}
+                  onChange={(e) => setProvince(e.target.value)}
+                  placeholder="Gauteng"
+                  className="w-full bg-gray-50 border-none rounded-xl py-3 px-4 text-sm font-bold text-gray-900 focus:ring-2 focus:ring-gray-200"
+                />
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Map Pin Point (Optional) */}
         <section className="space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Address Location</h3>
-            <span className="text-[9px] text-gray-400 font-bold italic">Tap map to pin location</span>
+            <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Map Pin Point (Optional)</h3>
+            <button
+              type="button"
+              onClick={() => setIncludeLocationMap(!includeLocationMap)}
+              className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-xl transition-colors ${
+                includeLocationMap ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'
+              }`}
+            >
+              {includeLocationMap ? 'Enabled' : 'Disabled'}
+            </button>
           </div>
-          <div className="h-48 w-full rounded-2xl overflow-hidden border-4 border-gray-50">
-            <MapContainer center={[location.lat, location.lng]} zoom={13} className="h-full w-full">
-              <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-              <Marker position={[location.lat, location.lng]} />
-              <MapEvents />
-            </MapContainer>
-          </div>
+          {includeLocationMap ? (
+            <div className="space-y-2">
+              <span className="text-[9px] text-gray-400 font-bold italic">Tap map to pin exact coordinates</span>
+              <div className="h-48 w-full rounded-2xl overflow-hidden border-4 border-gray-50">
+                <MapContainer center={[location.lat, location.lng]} zoom={13} className="h-full w-full">
+                  <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                  <Marker position={[location.lat, location.lng]} />
+                  <MapEvents />
+                </MapContainer>
+              </div>
+            </div>
+          ) : (
+            <p className="text-[10px] text-gray-400 italic">Map coordinates are optional. Enable above if you want to pin your exact GPS location.</p>
+          )}
         </section>
 
         {/* Social Media Links */}
